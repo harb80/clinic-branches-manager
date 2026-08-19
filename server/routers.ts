@@ -9,12 +9,14 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, roleProcedure, router } from "./_core/trpc";
 import {
   countInternalUsers,
+  listInternalUsers,
   createInternalUser,
   updateInternalUser,
   createMedicalAttachment,
   createPatient,
   getDashboardSummary,
   createAppointment,
+  updateAppointmentStatus,
   listAppointments,
   createBranch,
   updateBranch,
@@ -41,7 +43,7 @@ import {
   saveBranchWorkingHours,
   listDoctorSchedules,
   saveDoctorSchedule,
-  listInternalUsers,
+  listBranchServices,
   searchPatients,
   hasPatientConflict,
   writeAuditLog,
@@ -111,6 +113,11 @@ export const appRouter = router({
       if (appointment) await writeAuditLog({ userId: ctx.user.id, branchId: appointment.branchId, action: "create", entityType: "appointment", entityId: appointment.id });
       return appointment;
     }),
+    updateStatus: protectedProcedure.input(z.object({ appointmentId: z.number().int().positive(), status: z.enum(["booked", "confirmed", "arrived", "completed", "cancelled", "no_show"]) })).mutation(async ({ ctx, input }) => {
+      const appointment = await updateAppointmentStatus({ ...input, changedBy: ctx.user.id });
+      if (appointment) await writeAuditLog({ userId: ctx.user.id, branchId: appointment.branchId, action: "update_status", entityType: "appointment", entityId: appointment.id, metadata: { status: appointment.status } });
+      return appointment;
+    }),
   }),
   dashboard: router({
     summary: protectedProcedure.query(() => getDashboardSummary()),
@@ -174,6 +181,9 @@ export const appRouter = router({
       return doctor;
     }),
   }),
+  services: router({
+    listByBranch: roleProcedure("admin", "super_admin", "branch_manager", "receptionist", "accountant").input(z.object({ branchId: z.number().int().positive() })).query(({ input }) => listBranchServices(input.branchId)),
+  }),
   reports: router({
     summary: roleProcedure("admin", "super_admin", "branch_manager", "accountant", "receptionist", "doctor").input(z.object({ branchId: z.number().int().positive().optional(), from: z.string().optional(), to: z.string().optional() })).query(({ input }) => getReportsSummary({ branchId: input.branchId, from: input.from ? new Date(input.from) : undefined, to: input.to ? new Date(input.to) : undefined })),
   }),
@@ -185,9 +195,9 @@ export const appRouter = router({
       if (invoice) await writeAuditLog({ userId: ctx.user.id, branchId: invoice.branchId, action: input.status, entityType: "invoice", entityId: invoice.id });
       return invoice;
     }),
-    createInvoice: roleProcedure("admin", "super_admin", "branch_manager", "accountant").input(z.object({ invoiceNumber: z.string().trim().min(3).max(50), patientId: z.number().int().positive(), appointmentId: z.number().int().positive().optional(), branchId: z.number().int().positive(), subtotal: z.string(), discount: z.string(), total: z.string() })).mutation(async ({ ctx, input }) => {
+    createInvoice: roleProcedure("admin", "super_admin", "branch_manager", "accountant").input(z.object({ invoiceNumber: z.string().trim().min(3).max(50), patientId: z.number().int().positive(), appointmentId: z.number().int().positive().optional(), branchId: z.number().int().positive(), subtotal: z.string(), discount: z.string(), total: z.string(), items: z.array(z.object({ serviceId: z.number().int().positive(), quantity: z.number().int().min(1).max(100) })).max(50).optional() })).mutation(async ({ ctx, input }) => {
       const invoice = await createInvoice({ ...input, createdBy: ctx.user.id });
-      if (invoice) await writeAuditLog({ userId: ctx.user.id, branchId: input.branchId, action: "create", entityType: "invoice", entityId: invoice.id, metadata: { patientId: input.patientId, total: input.total } });
+      if (invoice) await writeAuditLog({ userId: ctx.user.id, branchId: input.branchId, action: "create", entityType: "invoice", entityId: invoice.id, metadata: { patientId: input.patientId, total: invoice.total, itemCount: input.items?.length ?? 0 } });
       return invoice;
     }),
     recordPayment: roleProcedure("admin", "super_admin", "branch_manager", "receptionist", "accountant").input(z.object({ invoiceId: z.number().int().positive(), patientId: z.number().int().positive(), branchId: z.number().int().positive(), amount: z.string(), method: z.enum(["cash", "card", "bank_transfer", "insurance", "other"]), reference: z.string().max(120).optional() })).mutation(async ({ ctx, input }) => {

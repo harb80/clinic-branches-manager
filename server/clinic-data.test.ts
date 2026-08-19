@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createMedicalAttachment: vi.fn(),
   createMedicalVisit: vi.fn(),
+  createAppointment: vi.fn(),
+  updateAppointmentStatus: vi.fn(),
   createInvoice: vi.fn(),
   recordPayment: vi.fn(),
   listInvoices: vi.fn(),
@@ -23,6 +25,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./db", () => ({
   createMedicalAttachment: mocks.createMedicalAttachment,
   createMedicalVisit: mocks.createMedicalVisit,
+  createAppointment: mocks.createAppointment,
+  updateAppointmentStatus: mocks.updateAppointmentStatus,
   createInvoice: mocks.createInvoice,
   recordPayment: mocks.recordPayment,
   listInvoices: mocks.listInvoices,
@@ -237,6 +241,21 @@ describe("clinic data operations", () => {
   it("blocks a receptionist from updating users", async () => {
     const caller = appRouter.createCaller(createContext("receptionist"));
     await expect(caller.users.update({ id: 8, name: "Not Allowed" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("updates appointment status and writes a transition audit record", async () => {
+    const caller = appRouter.createCaller(createContext("receptionist"));
+    mocks.updateAppointmentStatus.mockResolvedValue({ id: 3, branchId: 1, status: "arrived" });
+    const result = await caller.appointments.updateStatus({ appointmentId: 3, status: "arrived" });
+    expect(result?.status).toBe("arrived");
+    expect(mocks.updateAppointmentStatus).toHaveBeenCalledWith({ appointmentId: 3, status: "arrived", changedBy: 11 });
+    expect(mocks.writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({ entityType: "appointment", action: "update_status", entityId: 3, branchId: 1 }));
+  });
+
+  it("rejects invalid appointment status input at the router boundary", async () => {
+    const caller = appRouter.createCaller(createContext("receptionist"));
+    await expect(caller.appointments.updateStatus({ appointmentId: 3, status: "not-a-status" as never })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(mocks.updateAppointmentStatus).not.toHaveBeenCalled();
   });
 
   it("writes an audit record when a patient is created", async () => {
