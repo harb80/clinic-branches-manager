@@ -240,10 +240,10 @@
 
 ## GitHub export
 
-- [ ] Export the final project checkpoint to a user-selected GitHub repository.
-- [ ] Verify the exported repository and report its URL.
+- [x] Export the final project checkpoint to a user-selected GitHub repository.
+- [x] Verify the exported repository and report its URL.
 
 ## GitHub export details
 
-- [ ] Create the private GitHub repository `clinic-branches-manager` under the connected account.
-- [ ] Push the final checkpoint and verify the remote repository contents.
+- [x] Create the private GitHub repository `clinic-branches-manager` under the connected account.
+- [x] Push the final checkpoint and verify the remote repository contents.
