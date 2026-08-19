@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   listInvoices: vi.fn(),
   getInvoiceReceipt: vi.fn(),
   setInvoiceStatus: vi.fn(),
+  listSpecialties: vi.fn(),
+  hasPatientConflict: vi.fn(),
   createPatient: vi.fn(),
   updateInternalUser: vi.fn(),
   getMedicalVisitForAttachment: vi.fn(),
@@ -26,6 +28,8 @@ vi.mock("./db", () => ({
   listInvoices: mocks.listInvoices,
   getInvoiceReceipt: mocks.getInvoiceReceipt,
   setInvoiceStatus: mocks.setInvoiceStatus,
+  listSpecialties: mocks.listSpecialties,
+  hasPatientConflict: mocks.hasPatientConflict,
   createPatient: mocks.createPatient,
   updateInternalUser: mocks.updateInternalUser,
   getDashboardSummary: vi.fn(),
@@ -79,6 +83,7 @@ describe("clinic data operations", () => {
     mocks.getMedicalVisitForAttachment.mockResolvedValue({ id: 8, patientId: 10 });
     mocks.assertMedicalVisitScope.mockResolvedValue(undefined);
     mocks.hasInternalUserConflict.mockResolvedValue(false);
+    mocks.hasPatientConflict.mockResolvedValue(false);
     mocks.createMedicalAttachment.mockResolvedValue({ id: 91, visitId: 8, patientId: 10 });
   });
 
@@ -89,6 +94,13 @@ describe("clinic data operations", () => {
   it("rejects an attachment linked to another patient", () => {
     expect(attachmentBelongsToVisit({ visitId: 8, patientId: 9 }, { id: 8, patientId: 10 })).toBe(false);
     expect(attachmentBelongsToVisit({ visitId: 8, patientId: 10 }, { id: 8, patientId: 10 })).toBe(true);
+  });
+
+  it("rejects duplicate patient number or phone before persistence", async () => {
+    const caller = appRouter.createCaller(createContext());
+    mocks.hasPatientConflict.mockResolvedValueOnce(true);
+    await expect(caller.patients.create({ patientNumber: "PT-0001", fullName: "Patient One", phone: "01000000000", gender: "female" })).rejects.toThrow("Patient number or phone already exists");
+    expect(mocks.createPatient).not.toHaveBeenCalled();
   });
 
   it("returns searchable patient records", async () => {
@@ -111,6 +123,16 @@ describe("clinic data operations", () => {
     expect(result?.id).toBe(91);
     expect(mocks.createMedicalAttachment).toHaveBeenCalledWith(expect.objectContaining({ visitId: 8, patientId: 10, uploadedBy: 11 }));
     expect(mocks.writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: "upload", entityType: "medical_attachment", entityId: 91 }));
+  });
+
+  it("exposes the required reproductive-health specialties", async () => {
+    const caller = appRouter.createCaller(createContext("admin"));
+    mocks.listSpecialties.mockResolvedValue([
+      { id: 1, nameAr: "نساء وتوليد", nameEn: "Obstetrics & Gynecology", isActive: true },
+      { id: 2, nameAr: "أمراض ذكورة", nameEn: "Male Reproductive Medicine", isActive: true },
+    ]);
+    const result = await caller.doctors.specialties();
+    expect(result.map(item => item.nameEn)).toEqual(["Obstetrics & Gynecology", "Male Reproductive Medicine"]);
   });
 
   it("records invoice cancellation and refund audit events", async () => {

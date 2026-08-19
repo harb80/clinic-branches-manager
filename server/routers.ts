@@ -27,6 +27,8 @@ import {
   getReportsSummary,
   listDoctors,
   listSpecialties,
+  createSpecialty,
+  updateSpecialty,
   createDoctor,
   createInvoice,
   getInvoiceReceipt,
@@ -35,8 +37,13 @@ import {
   getUserByLogin,
   hasInternalUserConflict,
   listBranches,
+  listBranchWorkingHours,
+  saveBranchWorkingHours,
+  listDoctorSchedules,
+  saveDoctorSchedule,
   listInternalUsers,
   searchPatients,
+  hasPatientConflict,
   writeAuditLog,
 } from "./db";
 import { attachmentBelongsToVisit, medicalAttachmentInput, patientInput } from "./validation";
@@ -109,6 +116,8 @@ export const appRouter = router({
     summary: protectedProcedure.query(() => getDashboardSummary()),
   }),
   branches: router({
+    hours: roleProcedure("admin", "super_admin", "branch_manager", "doctor", "receptionist").input(z.object({ branchId: z.number().int().positive() })).query(({ input }) => listBranchWorkingHours(input.branchId)),
+    saveHours: roleProcedure("admin", "super_admin", "branch_manager").input(z.object({ branchId: z.number().int().positive(), dayOfWeek: z.number().int().min(0).max(6), opensAt: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/), closesAt: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/), isClosed: z.boolean() })).mutation(async ({ ctx, input }) => { const hours = await saveBranchWorkingHours(input); if (hours) await writeAuditLog({ userId: ctx.user.id, branchId: input.branchId, action: "update", entityType: "branch_working_hours", entityId: hours.id }); return hours; }),
     list: protectedProcedure.query(() => listBranches()),
     create: adminProcedure.input(z.object({ nameAr: z.string().trim().min(2).max(180), nameEn: z.string().trim().min(2).max(180), code: z.string().trim().min(2).max(32), address: z.string().max(1000).optional(), phone: z.string().max(40).optional() })).mutation(async ({ ctx, input }) => {
       const branch = await createBranch(input);
@@ -125,6 +134,7 @@ export const appRouter = router({
   patients: router({
     search: protectedProcedure.input(z.object({ search: z.string().optional() }).optional()).query(({ input }) => searchPatients(input?.search)),
     create: protectedProcedure.input(patientInput).mutation(async ({ ctx, input }) => {
+      if (await hasPatientConflict({ patientNumber: input.patientNumber, phone: input.phone })) throw new Error("Patient number or phone already exists");
       const patient = await createPatient(input);
       if (patient) await writeAuditLog({ userId: ctx.user.id, action: "create", entityType: "patient", entityId: patient.id, metadata: { patientNumber: patient.patientNumber } });
       return patient;
@@ -154,6 +164,10 @@ export const appRouter = router({
   doctors: router({
     list: roleProcedure("admin", "super_admin", "branch_manager", "doctor", "receptionist").query(() => listDoctors()),
     specialties: roleProcedure("admin", "super_admin", "branch_manager", "doctor", "receptionist").query(() => listSpecialties()),
+    createSpecialty: roleProcedure("admin", "super_admin").input(z.object({ nameAr: z.string().trim().min(2).max(160), nameEn: z.string().trim().min(2).max(160) })).mutation(async ({ ctx, input }) => { const specialty = await createSpecialty(input); if (specialty) await writeAuditLog({ userId: ctx.user.id, action: "create", entityType: "specialty", entityId: specialty.id }); return specialty; }),
+    updateSpecialty: roleProcedure("admin", "super_admin").input(z.object({ id: z.number().int().positive(), nameAr: z.string().trim().min(2).max(160).optional(), nameEn: z.string().trim().min(2).max(160).optional(), isActive: z.boolean().optional() })).mutation(async ({ ctx, input }) => { const specialty = await updateSpecialty(input); if (specialty) await writeAuditLog({ userId: ctx.user.id, action: "update", entityType: "specialty", entityId: specialty.id }); return specialty; }),
+    schedules: roleProcedure("admin", "super_admin", "branch_manager", "doctor", "receptionist").input(z.object({ doctorId: z.number().int().positive() })).query(({ input }) => listDoctorSchedules(input.doctorId)),
+    saveSchedule: roleProcedure("admin", "super_admin", "branch_manager").input(z.object({ doctorId: z.number().int().positive(), branchId: z.number().int().positive(), dayOfWeek: z.number().int().min(0).max(6), startsAt: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/), endsAt: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/), slotMinutes: z.number().int().min(5).max(240) })).mutation(async ({ ctx, input }) => { const schedule = await saveDoctorSchedule(input); if (schedule) await writeAuditLog({ userId: ctx.user.id, branchId: input.branchId, action: "create", entityType: "doctor_schedule", entityId: schedule.id, metadata: { doctorId: input.doctorId } }); return schedule; }),
     create: roleProcedure("admin", "super_admin", "branch_manager").input(z.object({ specialtyId: z.number().int().positive(), userId: z.number().int().positive().optional(), licenseNumber: z.string().max(80).optional(), phone: z.string().max(40).optional(), consultationFee: z.string(), branchIds: z.array(z.number().int().positive()).min(1) })).mutation(async ({ ctx, input }) => {
       const doctor = await createDoctor(input);
       if (doctor?.doctor) await writeAuditLog({ userId: ctx.user.id, action: "create", entityType: "doctor", entityId: doctor.doctor.id, metadata: { branchIds: input.branchIds, specialtyId: input.specialtyId } });

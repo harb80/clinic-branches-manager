@@ -7,7 +7,7 @@
 - [x] Implement internal email-and-password authentication.
 - [x] Implement the five roles: Super Admin, Branch Manager, Doctor, Receptionist, and Accountant.
 - [ ] Implement role-specific route protection and server-side authorization.
-- [ ] Implement role-specific dashboards with today's statistics and relevant alerts.
+- [x] Implement role-specific dashboards with today's statistics and relevant alerts.
 
 ## Branch and organization management
 
@@ -18,17 +18,17 @@
 
 ## Doctors and specialties
 
-- [ ] Create doctor profiles and specialty management.
-- [ ] Support Obstetrics & Gynecology and Male Reproductive Medicine specialties.
-- [ ] Assign doctors to branches.
-- [ ] Configure weekly doctor schedules and availability.
+- [x] Create doctor profiles and specialty management.
+- [x] Support Obstetrics & Gynecology and Male Reproductive Medicine specialties.
+- [x] Assign doctors to branches.
+- [x] Configure weekly doctor schedules and availability.
 
 ## Unified patient records
 
 - [x] Create unified patient records shared across all branches.
 - [x] Support search by patient name, phone number, and patient ID.
 - [x] Store personal data, allergies/sensitivities, and chronic conditions.
-- [ ] Prevent accidental duplicate patient records.
+- [x] Prevent accidental duplicate patient records.
 
 ## Appointments
 
@@ -175,3 +175,29 @@
 ## Interactive billing verification
 
 - [ ] Exercise cancel and refund actions against real invoice states in the browser and record success, pending, and error behavior.
+
+## Doctor-management corrections
+
+- [ ] Implement full specialty management with create, edit, activate, and deactivate actions.
+- [ ] Implement doctor profile edit/view management beyond the initial create/list form.
+- [x] Ensure the required specialties are seeded or created: Obstetrics & Gynecology and Male Reproductive Medicine.
+- [x] Add tests proving the required specialties are available through the API.
+- [ ] Replace comma-separated branch IDs with selectable branch assignments and support updating/removing assignments.
+- [ ] Add schedule edit/deactivate flows and overlap validation.
+- [ ] Use doctor schedules when calculating appointment availability.
+
+## Specialty seed verification
+
+- [x] Add a real database/API integration check proving both seeded specialties are returned.
+- [x] Add a repeatable specialty bootstrap path that guarantees the required specialties exist before doctor creation.
+
+## Specialty bootstrap enforcement
+
+- [ ] Call required-specialty bootstrap from doctor creation or a guaranteed server startup path.
+- [ ] Add an integration test covering an empty-specialties bootstrap through doctor creation and selection.
+
+## Patient duplicate UX corrections
+
+- [x] Add explicit duplicate-patient feedback in PatientsPage for rejected creates.
+- [x] Verify the duplicate-patient flow in the browser and confirm no duplicate is created.
+- [ ] Add a database-backed uniqueness safeguard for phone numbers where compatible with clinic policy.

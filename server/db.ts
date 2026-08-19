@@ -1,9 +1,12 @@
 import { and, asc, count, eq, inArray, like, ne, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
+import { sum } from "drizzle-orm";
 import {
   appointments,
   branches,
+  branchWorkingHours,
+  doctorSchedules,
   medicalAttachments,
   medicalVisits,
   invoices,
@@ -126,6 +129,34 @@ export async function createInternalUser(input: { name: string; email: string; u
   return created[0];
 }
 
+export async function listBranchWorkingHours(branchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(branchWorkingHours).where(eq(branchWorkingHours.branchId, branchId)).orderBy(asc(branchWorkingHours.dayOfWeek));
+}
+
+export async function saveBranchWorkingHours(input: { branchId: number; dayOfWeek: number; opensAt: string; closesAt: string; isClosed: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.insert(branchWorkingHours).values(input).onDuplicateKeyUpdate({ set: { opensAt: input.opensAt, closesAt: input.closesAt, isClosed: input.isClosed } });
+  const rows = await db.select().from(branchWorkingHours).where(and(eq(branchWorkingHours.branchId, input.branchId), eq(branchWorkingHours.dayOfWeek, input.dayOfWeek))).limit(1);
+  return rows[0];
+}
+
+export async function listDoctorSchedules(doctorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(doctorSchedules).where(and(eq(doctorSchedules.doctorId, doctorId), eq(doctorSchedules.isActive, true))).orderBy(asc(doctorSchedules.dayOfWeek));
+}
+
+export async function saveDoctorSchedule(input: { doctorId: number; branchId: number; dayOfWeek: number; startsAt: string; endsAt: string; slotMinutes: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const result = await db.insert(doctorSchedules).values({ ...input, isActive: true });
+  const rows = await db.select().from(doctorSchedules).where(eq(doctorSchedules.id, Number(result[0].insertId))).limit(1);
+  return rows[0];
+}
+
 export async function listBranches() {
   const db = await getDb();
   if (!db) return [];
@@ -139,6 +170,7 @@ export async function listDoctors() {
 }
 
 export async function createDoctor(input: { specialtyId: number; userId?: number; licenseNumber?: string; phone?: string; consultationFee: string; branchIds: number[] }) {
+  await ensureRequiredSpecialties();
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   const result = await db.insert(doctors).values({ specialtyId: input.specialtyId, userId: input.userId, licenseNumber: input.licenseNumber, phone: input.phone, consultationFee: input.consultationFee });
@@ -148,9 +180,40 @@ export async function createDoctor(input: { specialtyId: number; userId?: number
   return rows[0];
 }
 
+export async function createSpecialty(input: { nameAr: string; nameEn: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const result = await db.insert(specialties).values({ ...input, isActive: true });
+  const rows = await db.select().from(specialties).where(eq(specialties.id, Number(result[0].insertId))).limit(1);
+  return rows[0];
+}
+
+export async function updateSpecialty(input: { id: number; nameAr?: string; nameEn?: string; isActive?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const { id, ...changes } = input;
+  await db.update(specialties).set(changes).where(eq(specialties.id, id));
+  const rows = await db.select().from(specialties).where(eq(specialties.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function ensureRequiredSpecialties() {
+  const db = await getDb();
+  if (!db) return;
+  const required = [
+    { nameAr: "نساء وتوليد", nameEn: "Obstetrics & Gynecology" },
+    { nameAr: "أمراض ذكورة", nameEn: "Male Reproductive Medicine" },
+  ];
+  const current = await db.select().from(specialties);
+  for (const specialty of required) {
+    if (!current.some(item => item.nameEn === specialty.nameEn)) await db.insert(specialties).values({ ...specialty, isActive: true });
+  }
+}
+
 export async function listSpecialties() {
   const db = await getDb();
   if (!db) return [];
+  await ensureRequiredSpecialties();
   return db.select().from(specialties).where(eq(specialties.isActive, true)).orderBy(asc(specialties.nameAr));
 }
 
@@ -270,6 +333,13 @@ export async function createAppointment(input: {
   return created[0];
 }
 
+export async function hasPatientConflict(input: { patientNumber: string; phone: string }) {
+  const db = await getDb();
+  if (!db) return false;
+  const result = await db.select({ id: patients.id }).from(patients).where(or(eq(patients.patientNumber, input.patientNumber), eq(patients.phone, input.phone))).limit(1);
+  return result.length > 0;
+}
+
 export async function searchPatients(search?: string) {
   const db = await getDb();
   if (!db) return [];
@@ -304,18 +374,24 @@ export async function createPatient(input: {
 
 export async function getDashboardSummary() {
   const db = await getDb();
-  if (!db) return { branches: 0, doctors: 0, patients: 0, appointmentsToday: 0 };
-  const [branchResult, doctorResult, patientResult, appointmentResult] = await Promise.all([
+  if (!db) return { branches: 0, doctors: 0, patients: 0, appointmentsToday: 0, waitingPatients: 0, newPatientsThisMonth: 0, collectionsToday: "0.00" };
+  const [branchResult, doctorResult, patientResult, appointmentResult, waitingResult, newPatientResult, collectionResult] = await Promise.all([
     db.select({ value: count() }).from(branches).where(eq(branches.isActive, true)),
     db.select({ value: count() }).from(doctors).where(eq(doctors.isActive, true)),
     db.select({ value: count() }).from(patients),
     db.select({ value: count() }).from(appointments).where(sql`DATE(${appointments.startsAt}) = CURRENT_DATE()`),
+    db.select({ value: count() }).from(appointments).where(sql`DATE(${appointments.startsAt}) = CURRENT_DATE() AND ${appointments.status} = 'arrived'`),
+    db.select({ value: count() }).from(patients).where(sql`${patients.createdAt} >= DATE_FORMAT(CURRENT_DATE(), '%Y-%m-01')`),
+    db.select({ value: sum(payments.amount) }).from(payments).where(sql`DATE(${payments.paidAt}) = CURRENT_DATE()`),
   ]);
   return {
     branches: Number(branchResult[0]?.value ?? 0),
     doctors: Number(doctorResult[0]?.value ?? 0),
     patients: Number(patientResult[0]?.value ?? 0),
     appointmentsToday: Number(appointmentResult[0]?.value ?? 0),
+    waitingPatients: Number(waitingResult[0]?.value ?? 0),
+    newPatientsThisMonth: Number(newPatientResult[0]?.value ?? 0),
+    collectionsToday: String(collectionResult[0]?.value ?? "0.00"),
   };
 }
 

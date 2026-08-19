@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { trpc } from "@/lib/trpc";
 import {
   ArrowUpRight,
   BellRing,
@@ -58,8 +59,33 @@ export default function Home() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const { isArabic, toggleLanguage, direction } = useLanguage();
-  const stats = isArabic ? arabicStats : englishStats;
+  const summary = trpc.dashboard.summary.useQuery(undefined, { enabled: Boolean(user) });
+  const baseStats = isArabic ? arabicStats : englishStats;
   const roleLabel = roleLabels[user?.role ?? "user"] ?? (isArabic ? "مستخدم" : "User");
+  const roleDescription = isArabic ? {
+    super_admin: "تحكم كامل في الفروع والحسابات والتقارير.", admin: "إدارة كاملة للنظام والبيانات الحساسة.", branch_manager: "متابعة تشغيل الفرع والمواعيد والطاقم.", doctor: "تابع زياراتك وملفات مرضاك ومواعيدك.", receptionist: "إدارة الحجوزات والمرضى وتسجيل الوصول.", accountant: "تابع الفواتير والتحصيل والأرصدة.", user: "صلاحيات النظام الداخلية.",
+  } : {
+    super_admin: "Full control of branches, accounts, and reports.", admin: "Full management of system and sensitive data.", branch_manager: "Monitor branch operations, bookings, and staff.", doctor: "Follow visits, patient records, and appointments.", receptionist: "Manage bookings, patients, and check-in.", accountant: "Track invoices, collections, and balances.", user: "Internal system permissions.",
+  };
+  const stats = baseStats.map((stat, index) => ({ ...stat, value: [String(summary.data?.appointmentsToday ?? 0), String(summary.data?.waitingPatients ?? 0), String(summary.data?.newPatientsThisMonth ?? 0), summary.data?.collectionsToday ?? "0.00"][index] ?? "0" }));
+  const roleAlerts = isArabic ? {
+    super_admin: [["راجع الحسابات والصلاحيات", "تأكد من أن كل موظف مرتبط بالدور والفرع المناسبين."], ["راجع التقارير الموحدة", "تابع أداء الفروع والتحصيلات من شاشة التقارير."]],
+    admin: [["راجع المستخدمين النشطين", "راقب الحسابات المفعلة وأوقف الحسابات غير المستخدمة."], ["تحقق من إعدادات الفروع", "راجع أوقات العمل والخدمات والأسعار قبل بدء اليوم."]],
+    branch_manager: [["تابع حجوزات الفرع", "راجع المواعيد القادمة وحالات الوصول وعدم الحضور."], ["راجع جدول الأطباء", "تأكد من توافق الجداول مع ساعات عمل الفرع."]],
+    doctor: [["ابدأ بمتابعة الزيارات", "سجّل التشخيص والأدوية وخطة المتابعة لكل زيارة."], ["راجع المرضى المنتظرين", "تابع المواعيد التي تم تسجيل وصول أصحابها اليوم."]],
+    receptionist: [["تابع تسجيل الوصول", "سجّل وصول المرضى وحدّث حالة المواعيد أولاً بأول."], ["ابحث قبل إضافة مريض", "استخدم رقم الهاتف أو رقم المريض لتجنب الملفات المكررة."]],
+    accountant: [["راجع التحصيل اليومي", "تأكد من تسجيل كل دفعة وربطها بالفاتورة الصحيحة."], ["تابع الأرصدة المستحقة", "راجع الفواتير غير المدفوعة والدفعات الجزئية."]],
+    user: [["صلاحيات محدودة", "تواصل مع مدير النظام إذا احتجت إلى إجراء غير متاح."], ["استخدم السجل الموحد", "ابحث عن ملف المريض قبل بدء أي إجراء."]],
+  } : {
+    super_admin: [["Review accounts and permissions", "Ensure each staff member has the correct role and branch."], ["Review unified reports", "Monitor branch performance and collections from Reports."]],
+    admin: [["Review active users", "Monitor enabled accounts and deactivate unused access."], ["Verify branch setup", "Review hours, services, and prices before the day starts."]],
+    branch_manager: [["Monitor branch bookings", "Review upcoming appointments and arrival/no-show statuses."], ["Review doctor schedules", "Ensure schedules align with branch working hours."]],
+    doctor: [["Follow up on visits", "Record diagnosis, medications, and follow-up plans for each visit."], ["Review waiting patients", "Follow appointments whose patients have checked in today."]],
+    receptionist: [["Manage check-in", "Record patient arrival and update appointment statuses promptly."], ["Search before adding", "Use phone or patient ID to avoid duplicate records."]],
+    accountant: [["Review today's collections", "Make sure every payment is linked to the correct invoice."], ["Follow outstanding balances", "Review unpaid invoices and partial payments."]],
+    user: [["Limited permissions", "Contact an administrator if you need an unavailable action."], ["Use the unified directory", "Search for the patient record before starting an action."]],
+  };
+  const activeAlerts = roleAlerts[user?.role ?? "user"] ?? roleAlerts.user;
 
   const quickActions = isArabic
     ? [
@@ -89,7 +115,7 @@ export default function Home() {
                 {isArabic ? "صباح الخير، أهلاً بك في عياداتنا" : "Good morning, welcome to your clinics"}
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                {isArabic ? "تابع حركة الفروع الثلاثة، المواعيد، المرضى، والعمليات المالية من مساحة عمل واحدة." : "Monitor all three branches, appointments, patients, and financial operations from one workspace."}
+                {roleDescription[user?.role ?? "user"]}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -160,8 +186,8 @@ export default function Home() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 px-5 pb-5">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><div className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-teal-300" /><div><p className="text-sm font-medium">{isArabic ? "جاهز لتهيئة المستخدمين" : "Ready to configure users"}</p><p className="mt-1 text-xs leading-5 text-slate-400">{isArabic ? "أضف حسابات الأطباء والاستقبال والحسابات لتفعيل سير العمل." : "Add doctor, reception, and accountant accounts to activate workflows."}</p></div></div></div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><div className="flex gap-3"><Stethoscope className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" /><div><p className="text-sm font-medium">{isArabic ? "أكمل إعداد التخصصات" : "Complete specialties setup"}</p><p className="mt-1 text-xs leading-5 text-slate-400">{isArabic ? "تم تجهيز نساء وتوليد وأمراض ذكورة في مخطط النظام." : "Obstetrics & Gynecology and Male Reproductive Medicine are ready in the data model."}</p></div></div></div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><div className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-teal-300" /><div><p className="text-sm font-medium">{activeAlerts[0][0]}</p><p className="mt-1 text-xs leading-5 text-slate-400">{activeAlerts[0][1]}</p></div></div></div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><div className="flex gap-3"><Stethoscope className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" /><div><p className="text-sm font-medium">{activeAlerts[1][0]}</p><p className="mt-1 text-xs leading-5 text-slate-400">{activeAlerts[1][1]}</p></div></div></div>
               </CardContent>
             </Card>
           </section>
