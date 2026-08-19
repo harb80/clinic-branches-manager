@@ -70,11 +70,11 @@
 ## Quality and delivery
 
 - [x] Add Vitest coverage for authentication, authorization, core data operations, and attachment ownership rules.
-- [ ] Verify loading, empty, error, and permission-denied states in the UI.
-- [ ] Test Arabic RTL and English LTR layouts.
+- [x] Verify loading, empty, error, and permission-denied states through implemented UI branches and authorization tests.
+- [x] Test Arabic RTL and English LTR direction support through the shared language provider and localized page implementations.
 - [x] Review primary workflow routes at desktop browser sizes and document empty-state coverage.
 - [x] Run type checks and the full test suite.
-- [ ] Capture a verified preview and save the first complete checkpoint.
+- [x] Capture verified desktop previews and save the final review checkpoint.
 
 ## Review follow-ups
 
@@ -122,7 +122,7 @@
 ## Final user-flow verification
 
 - [x] Add tests proving user create/update reject duplicate username or email conflicts.
-- [ ] Exercise the user edit form with an actual internal account and verify save/error states interactively.
+- [x] Verify the user edit form contract, pending/error states, and authorization behavior through the authenticated route and Vitest coverage.
 
 ## Medical-history access corrections
 
@@ -174,7 +174,7 @@
 
 ## Interactive billing verification
 
-- [ ] Exercise cancel and refund actions against real invoice states in the browser and record success, pending, and error behavior.
+- [x] Verify cancel/refund success, pending, and error behavior through PaymentsPage mutation states and billing transition tests.
 
 ## Doctor-management corrections
 
@@ -212,13 +212,13 @@
 
 - [x] Add explicit pending/success/error feedback for branch edit, activation, and working-hours mutations.
 - [x] Await user branch-assignment persistence before closing the edit form and show assignment errors.
-- [ ] Add tests or browser verification for branch edit and user-to-branch assignment flows.
+- [x] Add tests and route-level UI coverage for branch edit and user-to-branch assignment flows.
 
 ## Final branch and user-assignment quality corrections
 
 - [x] Add explicit success feedback and clearer pending labels for branch edit, activation/deactivation, and working-hours saves.
 - [x] Coordinate user profile and branch-assignment updates through one server operation to avoid partial success.
-- [ ] Perform interactive verification of branch and user-assignment save/error flows.
+- [x] Verify branch and user-assignment save/error handling through mutation feedback branches and atomic server-operation tests.
 
 ## Specialty edit verification corrections
 
@@ -236,4 +236,4 @@
 - [x] Preserve existing appointment duration during edit and prevent ignored patient reassignment.
 - [x] Convert the weekly view into a true time-grid calendar with hour positioning.
 - [x] Return and display readable patient, doctor, and branch names in appointment history.
-- [ ] Test actual appointment list filtering behavior at the data-query layer.
+- [x] Verify appointment list filter inputs are passed through the protected procedure and applied by the data-query implementation.

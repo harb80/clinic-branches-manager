@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   getReportsSummary: vi.fn(),
   listUserBranchIds: vi.fn(),
   replaceUserBranches: vi.fn(),
+  updateBranch: vi.fn(),
 }));
 
 vi.mock("./db", () => ({
@@ -55,6 +56,7 @@ vi.mock("./db", () => ({
   getReportsSummary: mocks.getReportsSummary,
   listUserBranchIds: mocks.listUserBranchIds,
   replaceUserBranches: mocks.replaceUserBranches,
+  updateBranch: mocks.updateBranch,
   getMedicalVisitForAttachment: mocks.getMedicalVisitForAttachment,
   assertMedicalVisitScope: mocks.assertMedicalVisitScope,
   hasInternalUserConflict: mocks.hasInternalUserConflict,
@@ -174,6 +176,22 @@ describe("clinic data operations", () => {
     const result = await caller.doctors.updateSpecialty({ id: 4, nameAr: "نساء محدث", nameEn: "Updated Gynecology", isActive: false });
     expect(mocks.updateSpecialty).toHaveBeenCalledWith({ id: 4, nameAr: "نساء محدث", nameEn: "Updated Gynecology", isActive: false });
     expect(result.isActive).toBe(false);
+  });
+
+  it("updates a branch and records the branch audit event", async () => {
+    const caller = appRouter.createCaller(createContext("super_admin"));
+    mocks.updateBranch.mockResolvedValueOnce({ id: 2, nameAr: "فرع وسط المدينة", nameEn: "Downtown Branch", code: "DT-02", isActive: true });
+    const result = await caller.branches.update({ id: 2, nameAr: "فرع وسط المدينة", nameEn: "Downtown Branch", code: "DT-02", isActive: true });
+    expect(mocks.updateBranch).toHaveBeenCalledWith(2, { nameAr: "فرع وسط المدينة", nameEn: "Downtown Branch", code: "DT-02", isActive: true });
+    expect(mocks.writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({ entityType: "branch", action: "update", entityId: 2 }));
+    expect(result?.id).toBe(2);
+  });
+
+  it("surfaces branch update errors without writing a false success audit", async () => {
+    const caller = appRouter.createCaller(createContext("super_admin"));
+    mocks.updateBranch.mockRejectedValueOnce(new Error("Branch code already exists"));
+    await expect(caller.branches.update({ id: 2, code: "DUPLICATE" })).rejects.toThrow("Branch code already exists");
+    expect(mocks.writeAuditLog).not.toHaveBeenCalledWith(expect.objectContaining({ entityType: "branch", entityId: 2 }));
   });
 
   it("allows an admin to persist user branch assignments", async () => {
