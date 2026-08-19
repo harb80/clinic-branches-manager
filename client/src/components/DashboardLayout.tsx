@@ -21,15 +21,23 @@ import {
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users } from "lucide-react";
+import { BarChart3, Building2, CalendarDays, CreditCard, FileHeart, Globe2, LayoutDashboard, LogOut, PanelLeft, Settings2, Stethoscope, Users } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Page 1", path: "/" },
-  { icon: Users, label: "Page 2", path: "/some-path" },
+  { icon: LayoutDashboard, ar: "لوحة التحكم", en: "Dashboard", path: "/" },
+  { icon: CalendarDays, ar: "المواعيد والحجوزات", en: "Appointments", path: "/appointments" },
+  { icon: Users, ar: "المرضى", en: "Patients", path: "/patients" },
+  { icon: FileHeart, ar: "الملفات الطبية", en: "Medical records", path: "/medical-records" },
+  { icon: Stethoscope, ar: "الأطباء والتخصصات", en: "Doctors & specialties", path: "/doctors" },
+  { icon: Building2, ar: "الفروع", en: "Branches", path: "/branches" },
+  { icon: CreditCard, ar: "المدفوعات والفواتير", en: "Payments & invoices", path: "/payments" },
+  { icon: BarChart3, ar: "التقارير", en: "Reports", path: "/reports" },
+  { icon: Settings2, ar: "الإعدادات", en: "Settings", path: "/settings" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -57,23 +65,32 @@ export default function DashboardLayout({
   }
 
   if (!user) {
+    const { isArabic, direction, toggleLanguage } = useLanguage();
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div dir={direction} className="flex items-center justify-center min-h-screen bg-slate-50">
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
           <div className="flex flex-col items-center gap-6">
             <h1 className="text-2xl font-semibold tracking-tight text-center">
-              Sign in to continue
+              {isArabic ? "تسجيل الدخول للنظام" : "Sign in to the clinic system"}
             </h1>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Access to this dashboard requires authentication. Continue to launch the login flow.
+              {isArabic ? "أدخل بيانات الدخول للوصول إلى لوحة إدارة الفروع والمرضى والمواعيد." : "Use your credentials to access branches, patients, and appointments."}
             </p>
           </div>
+          <Button
+            variant="outline"
+            onClick={toggleLanguage}
+            size="sm"
+            className="mb-2"
+          >
+            {isArabic ? "English" : "العربية"}
+          </Button>
           <Button
             onClick={() => startLogin()}
             size="lg"
             className="w-full shadow-lg hover:shadow-xl transition-all"
           >
-            Sign in
+            {isArabic ? "تسجيل الدخول" : "Sign in"}
           </Button>
         </div>
       </div>
@@ -105,6 +122,7 @@ function DashboardLayoutContent({
   setSidebarWidth,
 }: DashboardLayoutContentProps) {
   const { user, logout } = useAuth();
+  const { isArabic, direction, toggleLanguage } = useLanguage();
   const [location, setLocation] = useLocation();
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
@@ -151,7 +169,7 @@ function DashboardLayoutContent({
 
   return (
     <>
-      <div className="relative" ref={sidebarRef}>
+      <div dir={direction} className="relative" ref={sidebarRef}>
         <Sidebar
           collapsible="icon"
           className="border-r-0"
@@ -169,7 +187,7 @@ function DashboardLayoutContent({
               {!isCollapsed ? (
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-semibold tracking-tight truncate">
-                    Navigation
+                    {isArabic ? "عياداتنا الطبية" : "Our clinics"}
                   </span>
                 </div>
               ) : null}
@@ -185,13 +203,13 @@ function DashboardLayoutContent({
                     <SidebarMenuButton
                       isActive={isActive}
                       onClick={() => setLocation(item.path)}
-                      tooltip={item.label}
+                      tooltip={isArabic ? item.ar : item.en}
                       className={`h-10 transition-all font-normal`}
                     >
                       <item.icon
                         className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
                       />
-                      <span>{item.label}</span>
+                      <span>{isArabic ? item.ar : item.en}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
@@ -218,13 +236,17 @@ function DashboardLayoutContent({
                   </div>
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={toggleLanguage} className="cursor-pointer">
+                  <Globe2 className="mr-2 h-4 w-4" />
+                  <span>{isArabic ? "English" : "العربية"}</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={logout}
                   className="cursor-pointer text-destructive focus:text-destructive"
                 >
                   <LogOut className="mr-2 h-4 w-4" />
-                  <span>Sign out</span>
+                  <span>{isArabic ? "تسجيل الخروج" : "Sign out"}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -248,7 +270,7 @@ function DashboardLayoutContent({
               <div className="flex items-center gap-3">
                 <div className="flex flex-col gap-1">
                   <span className="tracking-tight text-foreground">
-                    {activeMenuItem?.label ?? "Menu"}
+                    {activeMenuItem ? (isArabic ? activeMenuItem.ar : activeMenuItem.en) : (isArabic ? "القائمة" : "Menu")}
                   </span>
                 </div>
               </div>
