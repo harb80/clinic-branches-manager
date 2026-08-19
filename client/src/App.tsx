@@ -9,6 +9,8 @@ import ModulePage from "./pages/ModulePage";
 import PatientsPage from "./pages/PatientsPage";
 import UsersPage from "./pages/UsersPage";
 import AppointmentsPage from "./pages/AppointmentsPage";
+import BranchesPage from "./pages/BranchesPage";
+import MedicalRecordsPage from "./pages/MedicalRecordsPage";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -18,9 +20,9 @@ function Router() {
       <Route path={"/appointments"} component={AppointmentsPage} />
       <Route path={"/patients"} component={PatientsPage} />
       <Route path={"/users"} component={UsersPage} />
-      <Route path={"/medical-records"}><ModulePage module="medical-records" /></Route>
+      <Route path={"/medical-records"} component={MedicalRecordsPage} />
       <Route path={"/doctors"}><ModulePage module="doctors" /></Route>
-      <Route path={"/branches"}><ModulePage module="branches" /></Route>
+      <Route path={"/branches"} component={BranchesPage} />
       <Route path={"/payments"}><ModulePage module="payments" /></Route>
       <Route path={"/reports"}><ModulePage module="reports" /></Route>
       <Route path={"/settings"}><ModulePage module="settings" /></Route>

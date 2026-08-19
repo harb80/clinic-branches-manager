@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { clearInternalSessionCookie, createInternalSession, setInternalSessionCookie } from "./internalAuth";
+import { storagePut } from "./storage";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -15,6 +16,8 @@ import {
   getDashboardSummary,
   createAppointment,
   listAppointments,
+  createBranch,
+  updateBranch,
   getMedicalVisitForAttachment,
   getUserByLogin,
   hasInternalUserConflict,
@@ -94,6 +97,17 @@ export const appRouter = router({
   }),
   branches: router({
     list: protectedProcedure.query(() => listBranches()),
+    create: adminProcedure.input(z.object({ nameAr: z.string().trim().min(2).max(180), nameEn: z.string().trim().min(2).max(180), code: z.string().trim().min(2).max(32), address: z.string().max(1000).optional(), phone: z.string().max(40).optional() })).mutation(async ({ ctx, input }) => {
+      const branch = await createBranch(input);
+      if (branch) await writeAuditLog({ userId: ctx.user.id, action: "create", entityType: "branch", entityId: branch.id });
+      return branch;
+    }),
+    update: adminProcedure.input(z.object({ id: z.number().int().positive(), nameAr: z.string().trim().min(2).max(180).optional(), nameEn: z.string().trim().min(2).max(180).optional(), code: z.string().trim().min(2).max(32).optional(), address: z.string().max(1000).optional(), phone: z.string().max(40).optional(), isActive: z.boolean().optional() })).mutation(async ({ ctx, input }) => {
+      const { id, ...changes } = input;
+      const branch = await updateBranch(id, changes);
+      await writeAuditLog({ userId: ctx.user.id, action: "update", entityType: "branch", entityId: id, metadata: changes });
+      return branch;
+    }),
   }),
   patients: router({
     search: protectedProcedure.input(z.object({ search: z.string().optional() }).optional()).query(({ input }) => searchPatients(input?.search)),
@@ -104,6 +118,16 @@ export const appRouter = router({
     }),
   }),
   medicalAttachments: router({
+    upload: protectedProcedure.input(z.object({ visitId: z.number().int().positive(), patientId: z.number().int().positive(), fileName: z.string().trim().min(1).max(255), mimeType: z.enum(["application/pdf", "image/jpeg", "image/png", "image/webp"]), dataBase64: z.string().min(1), sizeBytes: z.number().int().positive().max(10 * 1024 * 1024) })).mutation(async ({ ctx, input }) => {
+      const visit = await getMedicalVisitForAttachment(input.visitId);
+      if (!attachmentBelongsToVisit(input, visit)) throw new Error("Attachment must belong to the selected visit and patient");
+      const buffer = Buffer.from(input.dataBase64, "base64");
+      if (buffer.length > 10 * 1024 * 1024) throw new Error("Attachment is too large");
+      const stored = await storagePut(`medical-visits/${input.visitId}/${input.fileName}`, buffer, input.mimeType);
+      const attachment = await createMedicalAttachment({ visitId: input.visitId, patientId: input.patientId, fileName: input.fileName, mimeType: input.mimeType, storageKey: stored.key, storageUrl: stored.url, sizeBytes: buffer.length, uploadedBy: ctx.user.id });
+      if (attachment) await writeAuditLog({ userId: ctx.user.id, action: "upload", entityType: "medical_attachment", entityId: attachment.id, metadata: { visitId: input.visitId, patientId: input.patientId, fileName: input.fileName } });
+      return attachment;
+    }),
     create: protectedProcedure.input(medicalAttachmentInput).mutation(async ({ ctx, input }) => {
       const visit = await getMedicalVisitForAttachment(input.visitId);
       if (!attachmentBelongsToVisit(input, visit)) throw new Error("Attachment must belong to the selected visit and patient");

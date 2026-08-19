@@ -126,6 +126,23 @@ export async function listBranches() {
   return db.select().from(branches).orderBy(asc(branches.nameAr));
 }
 
+export async function createBranch(input: { nameAr: string; nameEn: string; code: string; address?: string; phone?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const result = await db.insert(branches).values(input);
+  const branchId = Number(result[0].insertId);
+  const created = await db.select().from(branches).where(eq(branches.id, branchId)).limit(1);
+  return created[0];
+}
+
+export async function updateBranch(id: number, input: { nameAr?: string; nameEn?: string; code?: string; address?: string; phone?: string; isActive?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.update(branches).set(input).where(eq(branches.id, id));
+  const result = await db.select().from(branches).where(eq(branches.id, id)).limit(1);
+  return result[0];
+}
+
 export async function listAppointments(date?: string) {
   const db = await getDb();
   if (!db) return [];

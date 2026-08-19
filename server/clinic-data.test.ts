@@ -16,7 +16,7 @@ vi.mock("./db", () => ({
   updateInternalUser: mocks.updateInternalUser,
   getDashboardSummary: vi.fn(),
   getMedicalVisitForAttachment: mocks.getMedicalVisitForAttachment,
-  hasInternalUserConflict: vi.fn().mockResolvedValue(false),
+  hasInternalUserConflict: mocks.hasInternalUserConflict,
   listBranches: vi.fn(),
   searchPatients: mocks.searchPatients,
   writeAuditLog: mocks.writeAuditLog,
@@ -54,6 +54,7 @@ describe("clinic data operations", () => {
     mocks.updateInternalUser.mockResolvedValue({ id: 8, name: "Updated User", email: "updated@example.com", username: "updated", role: "doctor", isActive: true });
     mocks.searchPatients.mockResolvedValue([{ id: 41, patientNumber: "PT-0041", fullName: "Patient One", phone: "01000000000" }]);
     mocks.getMedicalVisitForAttachment.mockResolvedValue({ id: 8, patientId: 10 });
+    mocks.hasInternalUserConflict.mockResolvedValue(false);
     mocks.createMedicalAttachment.mockResolvedValue({ id: 91, visitId: 8, patientId: 10 });
   });
 
@@ -86,6 +87,13 @@ describe("clinic data operations", () => {
     expect(result?.id).toBe(91);
     expect(mocks.createMedicalAttachment).toHaveBeenCalledWith(expect.objectContaining({ visitId: 8, patientId: 10, uploadedBy: 11 }));
     expect(mocks.writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: "upload", entityType: "medical_attachment", entityId: 91 }));
+  });
+
+  it("rejects duplicate user creation and update", async () => {
+    mocks.hasInternalUserConflict.mockResolvedValue(true);
+    const caller = appRouter.createCaller(createContext("super_admin"));
+    await expect(caller.users.create({ name: "Duplicate", email: "used@example.com", username: "used", password: "password123", role: "doctor" })).rejects.toThrow("Username or email already exists");
+    await expect(caller.users.update({ id: 8, username: "used" })).rejects.toThrow("Username or email already exists");
   });
 
   it("allows a super admin to update an internal user", async () => {

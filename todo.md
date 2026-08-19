@@ -105,7 +105,7 @@
 ## User-management and auth review corrections
 
 - [x] Add user edit, activate/deactivate, and password-reset actions for internal accounts.
-- [ ] Add duplicate username and email safeguards with tests.
+- [x] Add duplicate username and email safeguards with tests.
 - [x] Capture and review the internal authentication screens after the login/setup changes.
 
 ## User edit follow-up
@@ -115,6 +115,11 @@
 
 ## User edit UX corrections
 
-- [ ] Add pending and error-feedback states to the internal-user edit form.
-- [ ] Verify the edit workflow visually in the browser.
-- [ ] Add duplicate username/email feedback for user edits.
+- [x] Add pending and error-feedback states to the internal-user edit form.
+- [x] Verify the edit workflow visually in the browser.
+- [x] Add duplicate username/email feedback for user edits.
+
+## Final user-flow verification
+
+- [x] Add tests proving user create/update reject duplicate username or email conflicts.
+- [ ] Exercise the user edit form with an actual internal account and verify save/error states interactively.
