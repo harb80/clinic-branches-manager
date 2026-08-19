@@ -63,9 +63,9 @@
 
 ## Offline and synchronization readiness
 
-- [ ] Define the offline-capable data and synchronization strategy for branch operations.
-- [ ] Preserve stable IDs and conflict metadata for future synchronization between branches.
-- [ ] Ensure appointment, patient, visit, and payment workflows have safe retry behavior.
+- [x] Define the offline-capable data and synchronization strategy for branch operations.
+- [x] Preserve stable IDs and conflict metadata for future synchronization between branches.
+- [x] Ensure appointment, patient, visit, and payment workflows have safe retry behavior.
 
 ## Quality and delivery
 

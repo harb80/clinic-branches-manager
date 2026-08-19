@@ -149,6 +149,7 @@ export const patients = mysqlTable(
   "patients",
   {
     id: int("id").autoincrement().primaryKey(),
+    clientOperationId: varchar("clientOperationId", { length: 100 }).unique(),
     patientNumber: varchar("patientNumber", { length: 40 }).notNull().unique(),
     fullName: varchar("fullName", { length: 220 }).notNull(),
     phone: varchar("phone", { length: 40 }).notNull(),
@@ -166,10 +167,9 @@ export const patients = mysqlTable(
   table => ({ patientSearchIdx: index("patient_search_idx").on(table.fullName, table.phone) }),
 );
 
-export const appointments = mysqlTable(
-  "appointments",
-  {
-    id: int("id").autoincrement().primaryKey(),
+export const appointments = mysqlTable("appointments", {
+  id: int("id").autoincrement().primaryKey(),
+  clientOperationId: varchar("clientOperationId", { length: 100 }).unique(),
     patientId: int("patientId").notNull(),
     branchId: int("branchId").notNull(),
     doctorId: int("doctorId").notNull(),
@@ -195,10 +195,9 @@ export const appointmentStatusHistory = mysqlTable("appointment_status_history",
   changedAt: timestamp("changedAt").defaultNow().notNull(),
 });
 
-export const medicalVisits = mysqlTable(
-  "medical_visits",
-  {
-    id: int("id").autoincrement().primaryKey(),
+export const medicalVisits = mysqlTable("medical_visits", {
+  id: int("id").autoincrement().primaryKey(),
+  clientOperationId: varchar("clientOperationId", { length: 100 }).unique(),
     appointmentId: int("appointmentId").notNull().unique(),
     patientId: int("patientId").notNull(),
     doctorId: int("doctorId").notNull(),
@@ -257,6 +256,7 @@ export const invoiceItems = mysqlTable("invoice_items", {
 
 export const payments = mysqlTable("payments", {
   id: int("id").autoincrement().primaryKey(),
+  clientOperationId: varchar("clientOperationId", { length: 100 }).unique(),
   invoiceId: int("invoiceId").notNull(),
   patientId: int("patientId").notNull(),
   branchId: int("branchId").notNull(),
@@ -281,9 +281,21 @@ export const receipts = mysqlTable("receipts", {
   issuedAt: timestamp("issuedAt").defaultNow().notNull(),
 });
 
-export const auditLogs = mysqlTable(
-  "audit_logs",
-  {
+export const syncOperations = mysqlTable("sync_operations", {
+  id: int("id").autoincrement().primaryKey(),
+  operationId: varchar("operationId", { length: 100 }).notNull().unique(),
+  entityType: varchar("entityType", { length: 60 }).notNull(),
+  entityId: int("entityId"),
+  branchId: int("branchId"),
+  originDeviceId: varchar("originDeviceId", { length: 120 }).notNull(),
+  schemaVersion: int("schemaVersion").default(1).notNull(),
+  status: mysqlEnum("status", ["pending", "accepted", "conflict", "failed"]).default("pending").notNull(),
+  conflictReason: text("conflictReason"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const auditLogs = mysqlTable("audit_logs", {
     id: int("id").autoincrement().primaryKey(),
     userId: int("userId").notNull(),
     branchId: int("branchId"),

@@ -1,0 +1,2 @@
+ALTER TABLE `medical_visits` ADD `clientOperationId` varchar(100);--> statement-breakpoint
+ALTER TABLE `medical_visits` ADD CONSTRAINT `medical_visits_clientOperationId_unique` UNIQUE(`clientOperationId`);

@@ -14,6 +14,7 @@ import {
   invoiceItems,
   payments,
   receipts,
+  syncOperations,
   services,
   branchServices,
   doctors,
@@ -29,6 +30,20 @@ import { ENV } from "./_core/env";
 import { calculateInvoiceTotals, calculatePaymentStatus } from "./validation";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+
+export async function recordSyncOperation(input: { operationId?: string; entityType: string; entityId?: number; branchId?: number; originDeviceId?: string; status?: "pending" | "accepted" | "conflict" | "failed"; conflictReason?: string }) {
+  if (!input.operationId) return;
+  const db = await getDb();
+  if (!db) return;
+  const existing = await db.select().from(syncOperations).where(eq(syncOperations.operationId, input.operationId)).limit(1);
+  if (existing[0]) {
+    await db.update(syncOperations).set({ entityId: input.entityId ?? existing[0].entityId, branchId: input.branchId ?? existing[0].branchId, status: input.status ?? existing[0].status, conflictReason: input.conflictReason }).where(eq(syncOperations.operationId, input.operationId));
+    return existing[0];
+  }
+  const result = await db.insert(syncOperations).values({ operationId: input.operationId, entityType: input.entityType, entityId: input.entityId, branchId: input.branchId, originDeviceId: input.originDeviceId ?? "browser-unknown", status: input.status ?? "accepted", conflictReason: input.conflictReason });
+  const rows = await db.select().from(syncOperations).where(eq(syncOperations.id, Number(result[0].insertId))).limit(1);
+  return rows[0];
+}
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
@@ -366,9 +381,13 @@ export async function getInvoiceReceipt(invoiceId: number) {
   return { invoice, payments: paymentRows, paidAmount: paidAmount.toFixed(2), remainingAmount: Math.max(0, Number(invoice.total) - paidAmount).toFixed(2) };
 }
 
-export async function recordPayment(input: { invoiceId: number; patientId: number; branchId: number; amount: string; method: "cash" | "card" | "bank_transfer" | "insurance" | "other"; reference?: string; receivedBy: number }) {
+export async function recordPayment(input: { invoiceId: number; patientId: number; branchId: number; amount: string; method: "cash" | "card" | "bank_transfer" | "insurance" | "other"; reference?: string; receivedBy: number; clientOperationId?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
+  if (input.clientOperationId) {
+    const existingPayment = await db.select().from(payments).where(eq(payments.clientOperationId, input.clientOperationId)).limit(1);
+    if (existingPayment[0]) return existingPayment[0];
+  }
   const invoiceRows = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId)).limit(1);
   const invoice = invoiceRows[0];
   if (!invoice || invoice.patientId !== input.patientId || invoice.branchId !== input.branchId) throw new Error("Invoice scope mismatch");
@@ -382,7 +401,10 @@ export async function recordPayment(input: { invoiceId: number; patientId: numbe
   const paymentId = Number(result[0].insertId);
   const rows = await db.select().from(payments).where(eq(payments.id, paymentId)).limit(1);
   const payment = rows[0];
-  if (payment) await db.insert(receipts).values({ receiptNumber: `RCT-${Date.now()}-${paymentId}-${randomUUID().slice(0, 8)}`, invoiceId: input.invoiceId, paymentId, patientId: input.patientId, branchId: input.branchId, amount: input.amount, method: input.method, reference: input.reference, issuedBy: input.receivedBy });
+  if (payment) {
+    await db.insert(receipts).values({ receiptNumber: `RCT-${Date.now()}-${paymentId}-${randomUUID().slice(0, 8)}`, invoiceId: input.invoiceId, paymentId, patientId: input.patientId, branchId: input.branchId, amount: input.amount, method: input.method, reference: input.reference, issuedBy: input.receivedBy });
+    await recordSyncOperation({ operationId: input.clientOperationId, entityType: "payment", entityId: payment.id, branchId: input.branchId });
+  }
   return payment;
 }
 
@@ -443,9 +465,14 @@ export async function createAppointment(input: {
   visitType: "new" | "follow_up" | "emergency" | "procedure";
   notes?: string;
   createdBy: number;
+  clientOperationId?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
+  if (input.clientOperationId) {
+    const existingAppointment = await db.select().from(appointments).where(eq(appointments.clientOperationId, input.clientOperationId)).limit(1);
+    if (existingAppointment[0]) return existingAppointment[0];
+  }
   if (input.endsAt <= input.startsAt) throw new Error("Appointment end time must be after start time");
   const assignment = await db.select({ id: doctorBranches.id }).from(doctorBranches).where(and(eq(doctorBranches.doctorId, input.doctorId), eq(doctorBranches.branchId, input.branchId))).limit(1);
   if (!assignment[0]) throw new Error("Doctor is not assigned to this branch");
@@ -463,6 +490,7 @@ export async function createAppointment(input: {
   const result = await db.insert(appointments).values(input);
   const appointmentId = Number(result[0].insertId);
   const created = await db.select().from(appointments).where(eq(appointments.id, appointmentId)).limit(1);
+  await recordSyncOperation({ operationId: input.clientOperationId, entityType: "appointment", entityId: appointmentId, branchId: input.branchId });
   return created[0];
 }
 
@@ -485,6 +513,13 @@ export async function updateAppointmentStatus(input: { appointmentId: number; st
   await db.update(appointments).set({ status: input.status }).where(eq(appointments.id, input.appointmentId));
   await db.insert(appointmentStatusHistory).values({ appointmentId: input.appointmentId, fromStatus: current.status, toStatus: input.status, changedBy: input.changedBy });
   const rows = await db.select().from(appointments).where(eq(appointments.id, input.appointmentId)).limit(1);
+  return rows[0];
+}
+
+export async function getPatientByClientOperationId(clientOperationId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(patients).where(eq(patients.clientOperationId, clientOperationId)).limit(1);
   return rows[0];
 }
 
@@ -518,12 +553,18 @@ export async function createPatient(input: {
   allergies?: string;
   chronicConditions?: string;
   notes?: string;
+  clientOperationId?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
+  if (input.clientOperationId) {
+    const existingPatient = await db.select().from(patients).where(eq(patients.clientOperationId, input.clientOperationId)).limit(1);
+    if (existingPatient[0]) return existingPatient[0];
+  }
   const result = await db.insert(patients).values(input);
   const patientId = Number(result[0].insertId);
   const created = await db.select().from(patients).where(eq(patients.id, patientId)).limit(1);
+  await recordSyncOperation({ operationId: input.clientOperationId, entityType: "patient", entityId: patientId });
   return created[0];
 }
 
@@ -569,12 +610,17 @@ export async function assertMedicalVisitScope(input: { appointmentId: number; pa
   if (userBranchesForScope.length === 0 || doctorBranchesForScope.length === 0) throw new Error("FORBIDDEN_BRANCH_SCOPE");
 }
 
-export async function createMedicalVisit(input: { appointmentId: number; patientId: number; doctorId: number; chiefComplaint?: string; diagnosis?: string; medications?: string; followUpPlan?: string; visitNotes?: string }) {
+export async function createMedicalVisit(input: { appointmentId: number; patientId: number; doctorId: number; chiefComplaint?: string; diagnosis?: string; medications?: string; followUpPlan?: string; visitNotes?: string; clientOperationId?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
+  if (input.clientOperationId) {
+    const existingVisit = await db.select().from(medicalVisits).where(eq(medicalVisits.clientOperationId, input.clientOperationId)).limit(1);
+    if (existingVisit[0]) return existingVisit[0];
+  }
   const result = await db.insert(medicalVisits).values(input);
   const visitId = Number(result[0].insertId);
   const created = await db.select().from(medicalVisits).where(eq(medicalVisits.id, visitId)).limit(1);
+  await recordSyncOperation({ operationId: input.clientOperationId, entityType: "medical_visit", entityId: visitId });
   return created[0];
 }
 

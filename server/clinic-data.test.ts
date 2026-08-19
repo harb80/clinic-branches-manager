@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   setInvoiceStatus: vi.fn(),
   listSpecialties: vi.fn(),
   hasPatientConflict: vi.fn(),
+  getPatientByClientOperationId: vi.fn(),
   createPatient: vi.fn(),
   updateInternalUser: vi.fn(),
   getMedicalVisitForAttachment: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock("./db", () => ({
   setInvoiceStatus: mocks.setInvoiceStatus,
   listSpecialties: mocks.listSpecialties,
   hasPatientConflict: mocks.hasPatientConflict,
+  getPatientByClientOperationId: mocks.getPatientByClientOperationId,
   createPatient: mocks.createPatient,
   updateInternalUser: mocks.updateInternalUser,
   getDashboardSummary: vi.fn(),
@@ -88,6 +90,7 @@ describe("clinic data operations", () => {
     mocks.assertMedicalVisitScope.mockResolvedValue(undefined);
     mocks.hasInternalUserConflict.mockResolvedValue(false);
     mocks.hasPatientConflict.mockResolvedValue(false);
+    mocks.getPatientByClientOperationId.mockResolvedValue(undefined);
     mocks.createMedicalAttachment.mockResolvedValue({ id: 91, visitId: 8, patientId: 10 });
   });
 
@@ -105,6 +108,25 @@ describe("clinic data operations", () => {
     mocks.hasPatientConflict.mockResolvedValueOnce(true);
     await expect(caller.patients.create({ patientNumber: "PT-0001", fullName: "Patient One", phone: "01000000000", gender: "female" })).rejects.toThrow("Patient number or phone already exists");
     expect(mocks.createPatient).not.toHaveBeenCalled();
+  });
+
+  it("returns the existing patient for a repeated client operation", async () => {
+    const caller = appRouter.createCaller(createContext());
+    mocks.getPatientByClientOperationId.mockResolvedValueOnce({ id: 77, patientNumber: "PT-RETRY", fullName: "Retry Patient", phone: "01000000008", gender: "female", clientOperationId: "patient-op-123" });
+    const result = await caller.patients.create({ patientNumber: "PT-RETRY", fullName: "Retry Patient", phone: "01000000008", gender: "female", clientOperationId: "patient-op-123" });
+    expect(result?.id).toBe(77);
+    expect(mocks.hasPatientConflict).not.toHaveBeenCalled();
+    expect(mocks.createPatient).not.toHaveBeenCalled();
+  });
+
+  it("passes idempotency keys through offline-capable mutations", async () => {
+    const caller = appRouter.createCaller(createContext("accountant"));
+    await caller.patients.create({ patientNumber: "PT-OP-1", fullName: "Retry Patient", phone: "01000000009", gender: "female", clientOperationId: "patient-op-123" });
+    expect(mocks.createPatient).toHaveBeenCalledWith(expect.objectContaining({ clientOperationId: "patient-op-123" }));
+    await caller.appointments.create({ patientId: 10, branchId: 1, doctorId: 7, startsAt: "2026-08-20T09:00:00.000Z", endsAt: "2026-08-20T09:30:00.000Z", visitType: "new", clientOperationId: "appointment-op-123" });
+    expect(mocks.createAppointment).toHaveBeenCalledWith(expect.objectContaining({ clientOperationId: "appointment-op-123" }));
+    await caller.billing.recordPayment({ invoiceId: 31, patientId: 10, branchId: 1, amount: "10", method: "cash", clientOperationId: "payment-op-123" });
+    expect(mocks.recordPayment).toHaveBeenCalledWith(expect.objectContaining({ clientOperationId: "payment-op-123" }));
   });
 
   it("returns searchable patient records", async () => {

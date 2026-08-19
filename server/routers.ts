@@ -14,6 +14,7 @@ import {
   updateInternalUser,
   createMedicalAttachment,
   createPatient,
+  getPatientByClientOperationId,
   getDashboardSummary,
   createAppointment,
   getDoctorAvailability,
@@ -117,7 +118,7 @@ export const appRouter = router({
   appointments: router({
     list: protectedProcedure.input(z.object({ date: z.string().optional() }).optional()).query(({ input }) => listAppointments(input?.date)),
     availability: protectedProcedure.input(z.object({ doctorId: z.number().int().positive(), branchId: z.number().int().positive(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })).query(({ input }) => getDoctorAvailability(input)),
-    create: protectedProcedure.input(z.object({ patientId: z.number().int().positive(), branchId: z.number().int().positive(), doctorId: z.number().int().positive(), serviceId: z.number().int().positive().optional(), startsAt: z.string().datetime(), endsAt: z.string().datetime(), visitType: z.enum(["new", "follow_up", "emergency", "procedure"]), notes: z.string().max(5000).optional() })).mutation(async ({ ctx, input }) => {
+    create: protectedProcedure.input(z.object({ patientId: z.number().int().positive(), branchId: z.number().int().positive(), doctorId: z.number().int().positive(), serviceId: z.number().int().positive().optional(), clientOperationId: z.string().trim().min(8).max(100).optional(), startsAt: z.string().datetime(), endsAt: z.string().datetime(), visitType: z.enum(["new", "follow_up", "emergency", "procedure"]), notes: z.string().max(5000).optional() })).mutation(async ({ ctx, input }) => {
       const appointment = await createAppointment({ ...input, startsAt: new Date(input.startsAt), endsAt: new Date(input.endsAt), createdBy: ctx.user.id });
       if (appointment) await writeAuditLog({ userId: ctx.user.id, branchId: appointment.branchId, action: "create", entityType: "appointment", entityId: appointment.id });
       return appointment;
@@ -149,10 +150,14 @@ export const appRouter = router({
   }),
   patients: router({
     search: protectedProcedure.input(z.object({ search: z.string().optional() }).optional()).query(({ input }) => searchPatients(input?.search)),
-    create: protectedProcedure.input(patientInput).mutation(async ({ ctx, input }) => {
+    create: protectedProcedure.input(patientInput.extend({ clientOperationId: z.string().trim().min(8).max(100).optional() })).mutation(async ({ ctx, input }) => {
+      if (input.clientOperationId) {
+        const existing = await getPatientByClientOperationId(input.clientOperationId);
+        if (existing) return existing;
+      }
       if (await hasPatientConflict({ patientNumber: input.patientNumber, phone: input.phone })) throw new Error("Patient number or phone already exists");
       const patient = await createPatient(input);
-      if (patient) await writeAuditLog({ userId: ctx.user.id, action: "create", entityType: "patient", entityId: patient.id, metadata: { patientNumber: patient.patientNumber } });
+      if (patient && patient.clientOperationId === input.clientOperationId) await writeAuditLog({ userId: ctx.user.id, action: "create", entityType: "patient", entityId: patient.id, metadata: { patientNumber: patient.patientNumber } });
       return patient;
     }),
   }),
@@ -165,7 +170,7 @@ export const appRouter = router({
         throw error;
       }
     }),
-    create: roleProcedure("admin", "super_admin", "branch_manager", "doctor").input(z.object({ appointmentId: z.number().int().positive(), patientId: z.number().int().positive(), doctorId: z.number().int().positive(), chiefComplaint: z.string().max(10000).optional(), diagnosis: z.string().max(10000).optional(), medications: z.string().max(10000).optional(), followUpPlan: z.string().max(10000).optional(), visitNotes: z.string().max(10000).optional() })).mutation(async ({ ctx, input }) => {
+    create: roleProcedure("admin", "super_admin", "branch_manager", "doctor").input(z.object({ appointmentId: z.number().int().positive(), patientId: z.number().int().positive(), doctorId: z.number().int().positive(), clientOperationId: z.string().trim().min(8).max(100).optional(), chiefComplaint: z.string().max(10000).optional(), diagnosis: z.string().max(10000).optional(), medications: z.string().max(10000).optional(), followUpPlan: z.string().max(10000).optional(), visitNotes: z.string().max(10000).optional() })).mutation(async ({ ctx, input }) => {
       try {
         await assertMedicalVisitScope(input, { userId: ctx.user.id, role: ctx.user.role });
         const visit = await createMedicalVisit(input);
@@ -216,7 +221,7 @@ export const appRouter = router({
       if (invoice) await writeAuditLog({ userId: ctx.user.id, branchId: input.branchId, action: "create", entityType: "invoice", entityId: invoice.id, metadata: { patientId: input.patientId, total: invoice.total, itemCount: input.items?.length ?? 0 } });
       return invoice;
     }),
-    recordPayment: roleProcedure("admin", "super_admin", "branch_manager", "receptionist", "accountant").input(z.object({ invoiceId: z.number().int().positive(), patientId: z.number().int().positive(), branchId: z.number().int().positive(), amount: z.string(), method: z.enum(["cash", "card", "bank_transfer", "insurance", "other"]), reference: z.string().max(120).optional() })).mutation(async ({ ctx, input }) => {
+    recordPayment: roleProcedure("admin", "super_admin", "branch_manager", "receptionist", "accountant").input(z.object({ invoiceId: z.number().int().positive(), patientId: z.number().int().positive(), branchId: z.number().int().positive(), amount: z.string(), method: z.enum(["cash", "card", "bank_transfer", "insurance", "other"]), reference: z.string().max(120).optional(), clientOperationId: z.string().trim().min(8).max(100).optional() })).mutation(async ({ ctx, input }) => {
       const payment = await recordPayment({ ...input, receivedBy: ctx.user.id });
       if (payment) await writeAuditLog({ userId: ctx.user.id, branchId: input.branchId, action: "create", entityType: "payment", entityId: payment.id, metadata: { invoiceId: input.invoiceId, amount: input.amount, method: input.method } });
       return payment;

@@ -143,6 +143,15 @@ function DashboardLayoutContent({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const activeMenuItem = menuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => { window.removeEventListener("online", handleOnline); window.removeEventListener("offline", handleOffline); };
+  }, []);
 
   useEffect(() => {
     if (isCollapsed) {
@@ -290,6 +299,7 @@ function DashboardLayoutContent({
             </div>
           </div>
         )}
+        {!isOnline && <div dir={direction} className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">{isArabic ? "الاتصال غير متاح. لا تُعتبر البيانات المحلية مزامنة حتى يعود الاتصال." : "You are offline. Local data is not considered synchronized until connectivity returns."}</div>}
         <main className="flex-1 p-4">{children}</main>
       </SidebarInset>
     </>
