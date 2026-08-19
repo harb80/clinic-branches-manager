@@ -9,9 +9,11 @@ import ModulePage from "./pages/ModulePage";
 import PatientsPage from "./pages/PatientsPage";
 import UsersPage from "./pages/UsersPage";
 import AppointmentsPage from "./pages/AppointmentsPage";
+import NewAppointmentPage from "./pages/NewAppointmentPage";
 import BranchesPage from "./pages/BranchesPage";
 import MedicalRecordsPage from "./pages/MedicalRecordsPage";
 import PaymentsPage from "./pages/PaymentsPage";
+import ServicesPage from "./pages/ServicesPage";
 import ReportsPage from "./pages/ReportsPage";
 import DoctorsPage from "./pages/DoctorsPage";
 
@@ -21,12 +23,14 @@ function Router() {
     <Switch>
       <Route path={"/"} component={Home} />
       <Route path={"/appointments"} component={AppointmentsPage} />
+      <Route path={"/appointments/new"} component={NewAppointmentPage} />
       <Route path={"/patients"} component={PatientsPage} />
       <Route path={"/users"} component={UsersPage} />
       <Route path={"/medical-records"} component={MedicalRecordsPage} />
       <Route path={"/doctors"} component={DoctorsPage} />
       <Route path={"/branches"} component={BranchesPage} />
       <Route path={"/payments"} component={PaymentsPage} />
+      <Route path={"/services"} component={ServicesPage} />
       <Route path={"/reports"} component={ReportsPage} />
       <Route path={"/settings"}><ModulePage module="settings" /></Route>
       <Route path={"/404"} component={NotFound} />

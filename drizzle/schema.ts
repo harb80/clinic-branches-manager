@@ -267,6 +267,20 @@ export const payments = mysqlTable("payments", {
   receivedBy: int("receivedBy").notNull(),
 });
 
+export const receipts = mysqlTable("receipts", {
+  id: int("id").autoincrement().primaryKey(),
+  receiptNumber: varchar("receiptNumber", { length: 60 }).notNull().unique(),
+  invoiceId: int("invoiceId").notNull(),
+  paymentId: int("paymentId").notNull().unique(),
+  patientId: int("patientId").notNull(),
+  branchId: int("branchId").notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  method: mysqlEnum("method", ["cash", "card", "bank_transfer", "insurance", "other"]).notNull(),
+  reference: varchar("reference", { length: 120 }),
+  issuedBy: int("issuedBy").notNull(),
+  issuedAt: timestamp("issuedAt").defaultNow().notNull(),
+});
+
 export const auditLogs = mysqlTable(
   "audit_logs",
   {
@@ -291,3 +305,4 @@ export type MedicalVisit = typeof medicalVisits.$inferSelect;
 export type Invoice = typeof invoices.$inferSelect;
 export type InvoiceItem = typeof invoiceItems.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
+export type Receipt = typeof receipts.$inferSelect;

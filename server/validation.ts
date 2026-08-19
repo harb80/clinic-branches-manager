@@ -30,6 +30,16 @@ export function canAccessBranch(role: string, assignedBranchIds: number[], targe
   return assignedBranchIds.includes(targetBranchId);
 }
 
+export function calculateInvoiceTotals(items: Array<{ unitPrice: string | number; quantity: number }>, discount: string | number) {
+  const subtotal = items.reduce((sum, item) => {
+    if (!Number.isFinite(Number(item.unitPrice)) || item.quantity <= 0) throw new Error("Invoice item values are invalid");
+    return sum + Number(item.unitPrice) * item.quantity;
+  }, 0);
+  const total = subtotal - Number(discount);
+  if (!Number.isFinite(total) || Number(discount) < 0 || total < 0) throw new Error("Invoice total cannot be negative");
+  return { subtotal: subtotal.toFixed(2), total: total.toFixed(2) };
+}
+
 export function calculatePaymentStatus(invoiceTotal: number, alreadyPaid: number, newPayment: number) {
   if (!Number.isFinite(invoiceTotal) || invoiceTotal <= 0 || !Number.isFinite(newPayment) || newPayment <= 0 || alreadyPaid + newPayment > invoiceTotal) throw new Error("Payment exceeds invoice balance");
   return alreadyPaid + newPayment >= invoiceTotal ? "paid" as const : "partial" as const;

@@ -48,7 +48,7 @@ vi.mock("./db", () => ({
 
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { attachmentBelongsToVisit, calculatePaymentStatus, canAccessBranch, patientInput } from "./validation";
+import { attachmentBelongsToVisit, calculateInvoiceTotals, calculatePaymentStatus, canAccessBranch, patientInput } from "./validation";
 
 function createContext(role: "super_admin" | "receptionist" | "accountant" = "receptionist"): TrpcContext {
   return {
@@ -187,6 +187,15 @@ describe("clinic data operations", () => {
     expect(receipt?.payments[0]?.method).toBe("cash");
   });
 
+  it("calculates branch-priced invoice items and discount totals", () => {
+    expect(calculateInvoiceTotals([{ unitPrice: "75.00", quantity: 2 }, { unitPrice: "50.00", quantity: 1 }], "10")).toEqual({ subtotal: "200.00", total: "190.00" });
+  });
+
+  it("rejects invalid invoice item totals before persistence", () => {
+    expect(() => calculateInvoiceTotals([{ unitPrice: "75.00", quantity: 0 }], "0")).toThrow("Invoice item values are invalid");
+    expect(() => calculateInvoiceTotals([{ unitPrice: "75.00", quantity: 1 }], "100")).toThrow("Invoice total cannot be negative");
+  });
+
   it("calculates partial and paid payment states and rejects overpayment", () => {
     expect(calculatePaymentStatus(100, 0, 40)).toBe("partial");
     expect(calculatePaymentStatus(100, 40, 60)).toBe("paid");
@@ -205,6 +214,13 @@ describe("clinic data operations", () => {
     const caller = appRouter.createCaller(createContext("super_admin"));
     await caller.medicalVisits.create({ appointmentId: 3, patientId: 10, doctorId: 7, diagnosis: "Follow-up" });
     expect(mocks.assertMedicalVisitScope).toHaveBeenCalledWith({ appointmentId: 3, patientId: 10, doctorId: 7, diagnosis: "Follow-up" }, { userId: 11, role: "super_admin" });
+  });
+
+  it("rejects medical visit creation when branch scope is denied", async () => {
+    const caller = appRouter.createCaller(createContext("receptionist"));
+    mocks.assertMedicalVisitScope.mockRejectedValueOnce(new Error("FORBIDDEN_BRANCH_SCOPE"));
+    await expect(caller.medicalVisits.create({ appointmentId: 3, patientId: 10, doctorId: 7, diagnosis: "Out of scope" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(mocks.createMedicalVisit).not.toHaveBeenCalled();
   });
 
   it("passes the requesting user scope into medical history access", async () => {
@@ -241,6 +257,20 @@ describe("clinic data operations", () => {
   it("blocks a receptionist from updating users", async () => {
     const caller = appRouter.createCaller(createContext("receptionist"));
     await expect(caller.users.update({ id: 8, name: "Not Allowed" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("passes branch-priced service items into invoice creation", async () => {
+    const caller = appRouter.createCaller(createContext("accountant"));
+    mocks.createInvoice.mockResolvedValue({ id: 31, invoiceNumber: "INV-31", patientId: 10, branchId: 1, total: "150.00" });
+    const result = await caller.billing.createInvoice({ invoiceNumber: "INV-31", patientId: 10, branchId: 1, subtotal: "0", discount: "10", total: "0", items: [{ serviceId: 4, quantity: 2 }] });
+    expect(result?.total).toBe("150.00");
+    expect(mocks.createInvoice).toHaveBeenCalledWith(expect.objectContaining({ branchId: 1, items: [{ serviceId: 4, quantity: 2 }], createdBy: 11 }));
+  });
+
+  it("surfaces rejection when a service is unavailable for the invoice branch", async () => {
+    const caller = appRouter.createCaller(createContext("accountant"));
+    mocks.createInvoice.mockRejectedValueOnce(new Error("One or more services are not active for this branch"));
+    await expect(caller.billing.createInvoice({ invoiceNumber: "INV-32", patientId: 10, branchId: 2, subtotal: "0", discount: "0", total: "0", items: [{ serviceId: 4, quantity: 1 }] })).rejects.toThrow("not active for this branch");
   });
 
   it("updates appointment status and writes a transition audit record", async () => {

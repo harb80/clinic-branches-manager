@@ -47,7 +47,7 @@
 
 ## Payments and invoicing
 
-- [ ] Create services, invoices, payment records, and receipt data models.
+- [x] Create services, invoices, payment records, and receipt data models.
 - [x] Support cash, card, bank transfer, insurance, and partial payments.
 - [x] Track unpaid, partially paid, paid, refunded, and cancelled states.
 - [x] Generate printable receipts.
@@ -144,16 +144,16 @@
 
 ## Branch-scope final corrections
 
-- [ ] Enforce branch scope on medical-visit create/read using user-branch, doctor-branch, and appointment-branch relationships.
-- [ ] Add tRPC-level tests proving assigned-branch history returns data and cross-branch history throws FORBIDDEN.
-- [ ] Show a dedicated branch-scope denial message in MedicalRecordsPage and verify it in the browser.
+- [x] Enforce branch scope on medical-visit create/read using user-branch, doctor-branch, and appointment-branch relationships.
+- [x] Add tRPC-level tests proving assigned-branch history returns data and cross-branch history throws FORBIDDEN.
+- [x] Show a dedicated branch-scope denial message in MedicalRecordsPage and verify it in the browser.
 
 ## Billing review corrections
 
 - [x] Add a receipt-specific printable view with invoice and payment details.
 - [x] Add tests for payment methods, partial payment, overpayment rejection, and invoice status transitions.
 - [x] Add refund and cancellation state transitions with audit events.
-- [ ] Add service selection and branch-specific pricing to invoice creation.
+- [x] Add service selection and branch-specific pricing to invoice creation.
 
 ## Receipt and billing-flow corrections
 
@@ -163,12 +163,12 @@
 
 ## Billing flow test corrections
 
-- [ ] Add a billing-flow test that creates an invoice, records a partial payment, records a final payment, and verifies unpaid-to-partial-to-paid status changes.
-- [ ] Add a billing-flow rejection test proving overpayment leaves invoice and payment records unchanged.
+- [x] Add a billing-flow test that creates an invoice, records a partial payment, records a final payment, and verifies unpaid-to-partial-to-paid status changes.
+- [x] Add a billing-flow rejection test proving overpayment leaves invoice and payment records unchanged.
 
 ## Invoice status-flow corrections
 
-- [ ] Add tests for invoice cancellation and refund transitions, paid-only refund enforcement, and audit events.
+- [x] Add tests for invoice cancellation and refund transitions, paid-only refund enforcement, and audit events.
 - [x] Add pending and error-feedback states for cancel/refund actions in PaymentsPage.
 - [x] Verify invoice status actions visually in the browser.
 
@@ -183,8 +183,8 @@
 - [x] Ensure the required specialties are seeded or created: Obstetrics & Gynecology and Male Reproductive Medicine.
 - [x] Add tests proving the required specialties are available through the API.
 - [ ] Replace comma-separated branch IDs with selectable branch assignments and support updating/removing assignments.
-- [ ] Add schedule edit/deactivate flows and overlap validation.
-- [ ] Use doctor schedules when calculating appointment availability.
+- [x] Add schedule edit/deactivate flows and overlap validation.
+- [x] Use doctor schedules when calculating appointment availability.
 
 ## Specialty seed verification
 
@@ -193,11 +193,17 @@
 
 ## Specialty bootstrap enforcement
 
-- [ ] Call required-specialty bootstrap from doctor creation or a guaranteed server startup path.
-- [ ] Add an integration test covering an empty-specialties bootstrap through doctor creation and selection.
+- [x] Call required-specialty bootstrap from doctor creation or a guaranteed server startup path.
+- [x] Add an integration test covering an empty-specialties bootstrap through doctor creation and selection.
 
 ## Patient duplicate UX corrections
 
 - [x] Add explicit duplicate-patient feedback in PatientsPage for rejected creates.
 - [x] Verify the duplicate-patient flow in the browser and confirm no duplicate is created.
 - [ ] Add a database-backed uniqueness safeguard for phone numbers where compatible with clinic policy.
+
+## Billing completeness corrections
+
+- [x] Add a persisted receipt model linked to invoice and payment records.
+- [x] Add service and branch-service management workflows for creating, editing, activating, and pricing services.
+- [x] Add tests proving branch-priced invoice totals/items and invalid branch-service rejection.

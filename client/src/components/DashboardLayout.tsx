@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { BarChart3, Building2, CalendarDays, CreditCard, FileHeart, Globe2, LayoutDashboard, LogOut, PanelLeft, Settings2, Stethoscope, Users } from "lucide-react";
+import {   BarChart3, Building2, CalendarDays, CreditCard, FileHeart, Globe2, LayoutDashboard, LogOut, PanelLeft, Settings2, Stethoscope, Tags, Users } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -39,6 +39,7 @@ const menuItems = [
   { icon: Building2, ar: "الفروع", en: "Branches", path: "/branches" },
   { icon: Users, ar: "المستخدمون والصلاحيات", en: "Users & roles", path: "/users" },
   { icon: CreditCard, ar: "المدفوعات والفواتير", en: "Payments & invoices", path: "/payments" },
+  { icon: Tags, ar: "الخدمات والأسعار", en: "Services & pricing", path: "/services" },
   { icon: BarChart3, ar: "التقارير", en: "Reports", path: "/reports" },
   { icon: Settings2, ar: "الإعدادات", en: "Settings", path: "/settings" },
 ];

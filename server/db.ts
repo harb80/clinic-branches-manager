@@ -13,6 +13,7 @@ import {
   invoices,
   invoiceItems,
   payments,
+  receipts,
   services,
   branchServices,
   doctors,
@@ -25,7 +26,7 @@ import {
   userBranches,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
-import { calculatePaymentStatus } from "./validation";
+import { calculateInvoiceTotals, calculatePaymentStatus } from "./validation";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -153,6 +154,12 @@ export async function listDoctorSchedules(doctorId: number) {
   return db.select().from(doctorSchedules).where(and(eq(doctorSchedules.doctorId, doctorId), eq(doctorSchedules.isActive, true))).orderBy(asc(doctorSchedules.dayOfWeek));
 }
 
+export async function listDoctorSchedulesForManagement(doctorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(doctorSchedules).where(eq(doctorSchedules.doctorId, doctorId)).orderBy(asc(doctorSchedules.dayOfWeek));
+}
+
 export async function saveDoctorSchedule(input: { doctorId: number; branchId: number; dayOfWeek: number; startsAt: string; endsAt: string; slotMinutes: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
@@ -168,16 +175,69 @@ export async function saveDoctorSchedule(input: { doctorId: number; branchId: nu
   return rows[0];
 }
 
+export async function updateDoctorSchedule(input: { id: number; doctorId: number; branchId: number; dayOfWeek: number; startsAt: string; endsAt: string; slotMinutes: number; isActive: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const toMinutes = (value: string) => { const [hours, minutes] = value.split(":").map(Number); return hours * 60 + minutes; };
+  const starts = toMinutes(input.startsAt);
+  const ends = toMinutes(input.endsAt);
+  if (ends <= starts) throw new Error("Schedule end time must be after start time");
+  if (input.isActive) {
+    const existing = await db.select().from(doctorSchedules).where(and(eq(doctorSchedules.doctorId, input.doctorId), eq(doctorSchedules.branchId, input.branchId), eq(doctorSchedules.dayOfWeek, input.dayOfWeek), eq(doctorSchedules.isActive, true), sql`${doctorSchedules.id} <> ${input.id}`));
+    if (existing.some(schedule => starts < toMinutes(schedule.endsAt) && ends > toMinutes(schedule.startsAt))) throw new Error("Doctor schedule overlaps an existing schedule");
+  }
+  await db.update(doctorSchedules).set({ doctorId: input.doctorId, branchId: input.branchId, dayOfWeek: input.dayOfWeek, startsAt: input.startsAt, endsAt: input.endsAt, slotMinutes: input.slotMinutes, isActive: input.isActive }).where(eq(doctorSchedules.id, input.id));
+  const rows = await db.select().from(doctorSchedules).where(eq(doctorSchedules.id, input.id)).limit(1);
+  return rows[0];
+}
+
 export async function listBranches() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(branches).orderBy(asc(branches.nameAr));
 }
 
+export async function listServices() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(services).orderBy(asc(services.nameAr));
+}
+
+export async function createService(input: { nameAr: string; nameEn: string; specialtyId?: number; defaultPrice: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const result = await db.insert(services).values({ ...input, isActive: true });
+  const rows = await db.select().from(services).where(eq(services.id, Number(result[0].insertId))).limit(1);
+  return rows[0];
+}
+
+export async function updateService(input: { id: number; nameAr?: string; nameEn?: string; specialtyId?: number | null; defaultPrice?: string; isActive?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const { id, ...changes } = input;
+  await db.update(services).set(changes).where(eq(services.id, id));
+  const rows = await db.select().from(services).where(eq(services.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function saveBranchService(input: { branchId: number; serviceId: number; price: string; isActive: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.insert(branchServices).values(input).onDuplicateKeyUpdate({ set: { price: input.price, isActive: input.isActive } });
+  const rows = await db.select().from(branchServices).where(and(eq(branchServices.branchId, input.branchId), eq(branchServices.serviceId, input.serviceId))).limit(1);
+  return rows[0];
+}
+
 export async function listBranchServices(branchId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select({ service: services, price: branchServices.price }).from(branchServices).innerJoin(services, eq(branchServices.serviceId, services.id)).where(and(eq(branchServices.branchId, branchId), eq(branchServices.isActive, true), eq(services.isActive, true))).orderBy(asc(services.nameAr));
+}
+
+export async function listBranchServicesForManagement(branchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ service: services, branchService: branchServices }).from(branchServices).innerJoin(services, eq(branchServices.serviceId, services.id)).where(eq(branchServices.branchId, branchId)).orderBy(asc(services.nameAr));
 }
 
 export async function listDoctors() {
@@ -263,7 +323,9 @@ export async function listInvoices(patientId?: number) {
 export async function createInvoice(input: { invoiceNumber: string; patientId: number; appointmentId?: number; branchId: number; subtotal: string; discount: string; total: string; createdBy: number; items?: Array<{ serviceId: number; quantity: number }> }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
-  const itemRows = input.items?.length ? await db.select({ service: services, price: branchServices.price }).from(branchServices).innerJoin(services, eq(branchServices.serviceId, services.id)).where(and(eq(branchServices.branchId, input.branchId), inArray(branchServices.serviceId, input.items.map(item => item.serviceId)), eq(branchServices.isActive, true), eq(services.isActive, true))) : [];
+  const itemIds = input.items?.map(item => item.serviceId) ?? [];
+  if (new Set(itemIds).size !== itemIds.length) throw new Error("Each service can appear only once on an invoice");
+  const itemRows = input.items?.length ? await db.select({ service: services, price: branchServices.price }).from(branchServices).innerJoin(services, eq(branchServices.serviceId, services.id)).where(and(eq(branchServices.branchId, input.branchId), inArray(branchServices.serviceId, itemIds), eq(branchServices.isActive, true), eq(services.isActive, true))) : [];
   if (input.items?.length && itemRows.length !== input.items.length) throw new Error("One or more services are not active for this branch");
   const resolvedItems = input.items?.map(item => {
     const match = itemRows.find(row => row.service.id === item.serviceId);
@@ -271,9 +333,9 @@ export async function createInvoice(input: { invoiceNumber: string; patientId: n
     const amount = (Number(match.price) * item.quantity).toFixed(2);
     return { serviceId: item.serviceId, serviceNameAr: match.service.nameAr, serviceNameEn: match.service.nameEn, quantity: item.quantity, unitPrice: String(match.price), amount };
   }) ?? [];
-  const subtotal = resolvedItems.length ? resolvedItems.reduce((total, item) => total + Number(item.amount), 0).toFixed(2) : input.subtotal;
-  const total = (Number(subtotal) - Number(input.discount)).toFixed(2);
-  if (Number(total) < 0) throw new Error("Invoice total cannot be negative");
+  const calculated = resolvedItems.length ? calculateInvoiceTotals(resolvedItems.map(item => ({ unitPrice: item.unitPrice, quantity: item.quantity })), input.discount) : { subtotal: input.subtotal, total: (Number(input.subtotal) - Number(input.discount)).toFixed(2) };
+  const subtotal = calculated.subtotal;
+  const total = calculated.total;
   const { items: _items, ...invoiceValues } = input;
   const result = await db.insert(invoices).values({ ...invoiceValues, subtotal, total });
   const invoiceId = Number(result[0].insertId);
@@ -317,8 +379,11 @@ export async function recordPayment(input: { invoiceId: number; patientId: numbe
   const status = calculatePaymentStatus(total, paid, amount);
   const result = await db.insert(payments).values(input);
   await db.update(invoices).set({ status }).where(eq(invoices.id, input.invoiceId));
-  const rows = await db.select().from(payments).where(eq(payments.id, Number(result[0].insertId))).limit(1);
-  return rows[0];
+  const paymentId = Number(result[0].insertId);
+  const rows = await db.select().from(payments).where(eq(payments.id, paymentId)).limit(1);
+  const payment = rows[0];
+  if (payment) await db.insert(receipts).values({ receiptNumber: `RCT-${Date.now()}-${paymentId}-${randomUUID().slice(0, 8)}`, invoiceId: input.invoiceId, paymentId, patientId: input.patientId, branchId: input.branchId, amount: input.amount, method: input.method, reference: input.reference, issuedBy: input.receivedBy });
+  return payment;
 }
 
 export async function createBranch(input: { nameAr: string; nameEn: string; code: string; address?: string; phone?: string }) {
@@ -343,6 +408,29 @@ export async function listAppointments(date?: string) {
   if (!db) return [];
   const day = date ?? new Date().toISOString().slice(0, 10);
   return db.select().from(appointments).where(sql`DATE(${appointments.startsAt}) = ${day}`).orderBy(asc(appointments.startsAt));
+}
+
+export async function getDoctorAvailability(input: { doctorId: number; branchId: number; date: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  const dateValue = new Date(`${input.date}T12:00:00Z`);
+  const dayOfWeek = dateValue.getUTCDay();
+  const schedules = await db.select().from(doctorSchedules).where(and(eq(doctorSchedules.doctorId, input.doctorId), eq(doctorSchedules.branchId, input.branchId), eq(doctorSchedules.dayOfWeek, dayOfWeek), eq(doctorSchedules.isActive, true))).orderBy(asc(doctorSchedules.startsAt));
+  const booked = await db.select({ startsAt: appointments.startsAt, endsAt: appointments.endsAt }).from(appointments).where(and(eq(appointments.doctorId, input.doctorId), eq(appointments.branchId, input.branchId), sql`DATE(${appointments.startsAt}) = ${input.date}`, sql`${appointments.status} NOT IN ('cancelled', 'no_show')`));
+  const toMinutes = (value: string) => { const [hours, minutes] = value.split(":").map(Number); return hours * 60 + minutes; };
+  const result: Array<{ startsAt: string; endsAt: string; label: string }> = [];
+  for (const schedule of schedules) {
+    const start = toMinutes(schedule.startsAt);
+    const end = toMinutes(schedule.endsAt);
+    const slotMinutes = schedule.slotMinutes;
+    for (let minute = start; minute + slotMinutes <= end; minute += slotMinutes) {
+      const startsAt = new Date(`${input.date}T${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}:00Z`);
+      const endsAt = new Date(startsAt.getTime() + slotMinutes * 60_000);
+      const overlaps = booked.some(item => startsAt < new Date(item.endsAt) && endsAt > new Date(item.startsAt));
+      if (!overlaps) result.push({ startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), label: `${startsAt.toISOString().slice(11, 16)} - ${endsAt.toISOString().slice(11, 16)}` });
+    }
+  }
+  return result;
 }
 
 export async function createAppointment(input: {
@@ -469,15 +557,16 @@ export async function getMedicalVisitForAttachment(visitId: number) {
   return result[0];
 }
 
-export async function assertMedicalVisitScope(input: { appointmentId: number; doctorId: number }, access: { userId: number; role: string }) {
-  if (access.role === "admin" || access.role === "super_admin") return;
+export async function assertMedicalVisitScope(input: { appointmentId: number; patientId?: number; doctorId: number }, access: { userId: number; role: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
-  const appointment = await db.select({ branchId: appointments.branchId }).from(appointments).where(eq(appointments.id, input.appointmentId)).limit(1);
+  const appointment = await db.select({ branchId: appointments.branchId, patientId: appointments.patientId, doctorId: appointments.doctorId }).from(appointments).where(eq(appointments.id, input.appointmentId)).limit(1);
   if (!appointment[0]) throw new Error("Appointment not found");
+  if ((input.patientId !== undefined && appointment[0].patientId !== input.patientId) || appointment[0].doctorId !== input.doctorId) throw new Error("Medical visit does not match appointment patient or doctor");
+  if (access.role === "admin" || access.role === "super_admin") return;
   const userBranchesForScope = await db.select({ branchId: userBranches.branchId }).from(userBranches).where(and(eq(userBranches.userId, access.userId), eq(userBranches.branchId, appointment[0].branchId)));
   const doctorBranchesForScope = await db.select({ branchId: doctorBranches.branchId }).from(doctorBranches).where(and(eq(doctorBranches.doctorId, input.doctorId), eq(doctorBranches.branchId, appointment[0].branchId)));
-  if (userBranchesForScope.length === 0 && doctorBranchesForScope.length === 0) throw new Error("FORBIDDEN_BRANCH_SCOPE");
+  if (userBranchesForScope.length === 0 || doctorBranchesForScope.length === 0) throw new Error("FORBIDDEN_BRANCH_SCOPE");
 }
 
 export async function createMedicalVisit(input: { appointmentId: number; patientId: number; doctorId: number; chiefComplaint?: string; diagnosis?: string; medications?: string; followUpPlan?: string; visitNotes?: string }) {
