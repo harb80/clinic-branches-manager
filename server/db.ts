@@ -1,10 +1,12 @@
-import { and, asc, count, eq, like, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, like, ne, or, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   appointments,
   branches,
   medicalAttachments,
   medicalVisits,
+  doctors,
   InsertUser,
   patients,
   users,
@@ -63,10 +65,91 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return result[0];
+}
+
+export async function getUserByLogin(login: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(or(eq(users.username, login), eq(users.email, login))).limit(1);
+  return result[0];
+}
+
+export async function countInternalUsers() {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.select({ value: count() }).from(users).where(sql`${users.passwordHash} IS NOT NULL`);
+  return Number(result[0]?.value ?? 0);
+}
+
+export async function hasInternalUserConflict(input: { email?: string; username?: string }, excludeId?: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const conditions = [input.email ? eq(users.email, input.email) : undefined, input.username ? eq(users.username, input.username) : undefined].filter(Boolean) as Array<ReturnType<typeof eq>>;
+  if (conditions.length === 0) return false;
+  const where = excludeId ? and(or(...conditions), ne(users.id, excludeId)) : or(...conditions);
+  const result = await db.select({ id: users.id }).from(users).where(where).limit(1);
+  return result.length > 0;
+}
+
+export async function listInternalUsers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: users.id, name: users.name, email: users.email, username: users.username, role: users.role, isActive: users.isActive }).from(users).where(sql`${users.passwordHash} IS NOT NULL`).orderBy(asc(users.name));
+}
+
+export async function updateInternalUser(id: number, input: { name?: string; email?: string; username?: string; role?: "super_admin" | "branch_manager" | "doctor" | "receptionist" | "accountant"; isActive?: boolean; passwordHash?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.update(users).set(input).where(eq(users.id, id));
+  const result = await db.select({ id: users.id, name: users.name, email: users.email, username: users.username, role: users.role, isActive: users.isActive }).from(users).where(eq(users.id, id)).limit(1);
+  return result[0];
+}
+
+export async function createInternalUser(input: { name: string; email: string; username: string; passwordHash: string; role: "super_admin" | "branch_manager" | "doctor" | "receptionist" | "accountant" }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const openId = `internal-${randomUUID()}`;
+  const result = await db.insert(users).values({ openId, name: input.name, email: input.email, username: input.username, passwordHash: input.passwordHash, role: input.role, loginMethod: "internal", isActive: true });
+  const userId = Number(result[0].insertId);
+  const created = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  return created[0];
+}
+
 export async function listBranches() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(branches).orderBy(asc(branches.nameAr));
+}
+
+export async function listAppointments(date?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const day = date ?? new Date().toISOString().slice(0, 10);
+  return db.select().from(appointments).where(sql`DATE(${appointments.startsAt}) = ${day}`).orderBy(asc(appointments.startsAt));
+}
+
+export async function createAppointment(input: {
+  patientId: number;
+  branchId: number;
+  doctorId: number;
+  serviceId?: number;
+  startsAt: Date;
+  endsAt: Date;
+  visitType: "new" | "follow_up" | "emergency" | "procedure";
+  notes?: string;
+  createdBy: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const result = await db.insert(appointments).values(input);
+  const appointmentId = Number(result[0].insertId);
+  const created = await db.select().from(appointments).where(eq(appointments.id, appointmentId)).limit(1);
+  return created[0];
 }
 
 export async function searchPatients(search?: string) {
@@ -104,14 +187,15 @@ export async function createPatient(input: {
 export async function getDashboardSummary() {
   const db = await getDb();
   if (!db) return { branches: 0, doctors: 0, patients: 0, appointmentsToday: 0 };
-  const [branchResult, patientResult, appointmentResult] = await Promise.all([
+  const [branchResult, doctorResult, patientResult, appointmentResult] = await Promise.all([
     db.select({ value: count() }).from(branches).where(eq(branches.isActive, true)),
+    db.select({ value: count() }).from(doctors).where(eq(doctors.isActive, true)),
     db.select({ value: count() }).from(patients),
     db.select({ value: count() }).from(appointments).where(sql`DATE(${appointments.startsAt}) = CURRENT_DATE()`),
   ]);
   return {
     branches: Number(branchResult[0]?.value ?? 0),
-    doctors: 0,
+    doctors: Number(doctorResult[0]?.value ?? 0),
     patients: Number(patientResult[0]?.value ?? 0),
     appointmentsToday: Number(appointmentResult[0]?.value ?? 0),
   };

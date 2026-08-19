@@ -4,8 +4,8 @@
 
 - [x] Configure the bilingual application shell with Arabic RTL as the primary layout and English LTR support.
 - [x] Replace the starter home screen with the clinic management dashboard shell.
-- [ ] Implement internal email-and-password authentication.
-- [ ] Implement the five roles: Super Admin, Branch Manager, Doctor, Receptionist, and Accountant.
+- [x] Implement internal email-and-password authentication.
+- [x] Implement the five roles: Super Admin, Branch Manager, Doctor, Receptionist, and Accountant.
 - [ ] Implement role-specific route protection and server-side authorization.
 - [ ] Implement role-specific dashboards with today's statistics and relevant alerts.
 
@@ -95,3 +95,26 @@
 - [x] Add mutation tests for medical attachment upload success and mismatched visit/patient rejection.
 - [x] Add an audit-log test for medical attachment upload in addition to patient creation.
 - [ ] Reinforce visit linkage in the attachment persistence layer where practical.
+
+## Internal authentication follow-ups
+
+- [x] Implement creation and management of internal user accounts for all supported staff roles.
+- [x] Add Vitest coverage for internal setup, login success, and invalid credentials.
+- [x] Verify internal setup and login loading and error states in the UI.
+
+## User-management and auth review corrections
+
+- [x] Add user edit, activate/deactivate, and password-reset actions for internal accounts.
+- [ ] Add duplicate username and email safeguards with tests.
+- [x] Capture and review the internal authentication screens after the login/setup changes.
+
+## User edit follow-up
+
+- [x] Add an internal-user edit form for name, email, username, and role.
+- [x] Add tests for successful user update and authorization restrictions.
+
+## User edit UX corrections
+
+- [ ] Add pending and error-feedback states to the internal-user edit form.
+- [ ] Verify the edit workflow visually in the browser.
+- [ ] Add duplicate username/email feedback for user edits.

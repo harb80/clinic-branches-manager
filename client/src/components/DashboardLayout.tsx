@@ -26,6 +26,8 @@ import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { useLanguage } from "@/contexts/LanguageContext";
+import { trpc } from "@/lib/trpc";
+import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 
 const menuItems = [
@@ -35,6 +37,7 @@ const menuItems = [
   { icon: FileHeart, ar: "الملفات الطبية", en: "Medical records", path: "/medical-records" },
   { icon: Stethoscope, ar: "الأطباء والتخصصات", en: "Doctors & specialties", path: "/doctors" },
   { icon: Building2, ar: "الفروع", en: "Branches", path: "/branches" },
+  { icon: Users, ar: "المستخدمون والصلاحيات", en: "Users & roles", path: "/users" },
   { icon: CreditCard, ar: "المدفوعات والفواتير", en: "Payments & invoices", path: "/payments" },
   { icon: BarChart3, ar: "التقارير", en: "Reports", path: "/reports" },
   { icon: Settings2, ar: "الإعدادات", en: "Settings", path: "/settings" },
@@ -55,6 +58,14 @@ export default function DashboardLayout({
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
   const { loading, user } = useAuth();
+  const { isArabic, direction, toggleLanguage } = useLanguage();
+  const [login, setLogin] = useState("");
+  const [password, setPassword] = useState("");
+  const [showSetup, setShowSetup] = useState(false);
+  const [setupForm, setSetupForm] = useState({ name: "", email: "", username: "", password: "" });
+  const loginMutation = trpc.auth.login.useMutation({ onSuccess: () => window.location.reload() });
+  const bootstrapStatus = trpc.auth.bootstrapStatus.useQuery();
+  const setupMutation = trpc.auth.setup.useMutation({ onSuccess: () => window.location.reload() });
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
@@ -65,33 +76,34 @@ export default function DashboardLayout({
   }
 
   if (!user) {
-    const { isArabic, direction, toggleLanguage } = useLanguage();
+    const submitLogin = (event: React.FormEvent) => {
+      event.preventDefault();
+      loginMutation.mutate({ login, password });
+    };
     return (
-      <div dir={direction} className="flex items-center justify-center min-h-screen bg-slate-50">
-        <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
-          <div className="flex flex-col items-center gap-6">
-            <h1 className="text-2xl font-semibold tracking-tight text-center">
-              {isArabic ? "تسجيل الدخول للنظام" : "Sign in to the clinic system"}
-            </h1>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
-              {isArabic ? "أدخل بيانات الدخول للوصول إلى لوحة إدارة الفروع والمرضى والمواعيد." : "Use your credentials to access branches, patients, and appointments."}
-            </p>
+      <div dir={direction} className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+        <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
+          <div className="mb-8 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-50 text-teal-700"><Users className="h-6 w-6" /></div>
+            <h1 className="text-2xl font-semibold tracking-tight">{isArabic ? "تسجيل الدخول للنظام" : "Sign in to the clinic system"}</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-500">{isArabic ? "استخدم البريد الإلكتروني أو اسم المستخدم وكلمة المرور." : "Use your email or username and password."}</p>
           </div>
-          <Button
-            variant="outline"
-            onClick={toggleLanguage}
-            size="sm"
-            className="mb-2"
-          >
-            {isArabic ? "English" : "العربية"}
-          </Button>
-          <Button
-            onClick={() => startLogin()}
-            size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all"
-          >
-            {isArabic ? "تسجيل الدخول" : "Sign in"}
-          </Button>
+          {showSetup ? <form onSubmit={event => { event.preventDefault(); setupMutation.mutate(setupForm); }} className="space-y-4">
+            <div className="space-y-2"><label className="text-sm font-medium">{isArabic ? "اسم المدير" : "Admin name"}</label><Input required value={setupForm.name} onChange={event => setSetupForm(current => ({ ...current, name: event.target.value }))} /></div>
+            <div className="space-y-2"><label className="text-sm font-medium">{isArabic ? "البريد الإلكتروني" : "Email"}</label><Input required type="email" value={setupForm.email} onChange={event => setSetupForm(current => ({ ...current, email: event.target.value }))} /></div>
+            <div className="space-y-2"><label className="text-sm font-medium">{isArabic ? "اسم المستخدم" : "Username"}</label><Input required value={setupForm.username} onChange={event => setSetupForm(current => ({ ...current, username: event.target.value }))} /></div>
+            <div className="space-y-2"><label className="text-sm font-medium">{isArabic ? "كلمة المرور" : "Password"}</label><Input required type="password" minLength={8} value={setupForm.password} onChange={event => setSetupForm(current => ({ ...current, password: event.target.value }))} /></div>
+            {setupMutation.error && <p className="text-sm text-red-600">{isArabic ? "تعذر إنشاء الحساب الرئيسي." : "Could not create the super admin account."}</p>}
+            <Button type="submit" disabled={setupMutation.isPending} className="h-11 w-full bg-teal-700 text-white hover:bg-teal-800">{setupMutation.isPending ? (isArabic ? "جارٍ الإنشاء..." : "Creating...") : (isArabic ? "إنشاء الحساب الرئيسي" : "Create super admin")}</Button>
+            <Button type="button" variant="ghost" onClick={() => setShowSetup(false)} className="w-full">{isArabic ? "العودة لتسجيل الدخول" : "Back to sign in"}</Button>
+          </form> : <form onSubmit={submitLogin} className="space-y-4">
+            <div className="space-y-2"><label className="text-sm font-medium">{isArabic ? "البريد أو اسم المستخدم" : "Email or username"}</label><Input required value={login} onChange={event => setLogin(event.target.value)} autoComplete="username" /></div>
+            <div className="space-y-2"><label className="text-sm font-medium">{isArabic ? "كلمة المرور" : "Password"}</label><Input required type="password" minLength={6} value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" /></div>
+            {loginMutation.error && <p className="text-sm text-red-600">{isArabic ? "بيانات الدخول غير صحيحة أو الحساب غير نشط." : "Invalid credentials or inactive account."}</p>}
+            <Button type="submit" disabled={loginMutation.isPending} className="h-11 w-full bg-slate-950 text-white hover:bg-slate-800">{loginMutation.isPending ? (isArabic ? "جارٍ التحقق..." : "Checking...") : (isArabic ? "تسجيل الدخول" : "Sign in")}</Button>
+          </form>}
+          {bootstrapStatus.data?.needsSetup && !showSetup && <Button variant="outline" onClick={() => setShowSetup(true)} className="mt-4 w-full border-teal-200 text-teal-700">{isArabic ? "تهيئة الحساب الرئيسي لأول مرة" : "Set up the first super admin"}</Button>}
+          <Button variant="ghost" onClick={toggleLanguage} className="mt-4 w-full text-slate-500">{isArabic ? "English" : "العربية"}</Button>
         </div>
       </div>
     );

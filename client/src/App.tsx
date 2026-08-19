@@ -7,14 +7,17 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import ModulePage from "./pages/ModulePage";
 import PatientsPage from "./pages/PatientsPage";
+import UsersPage from "./pages/UsersPage";
+import AppointmentsPage from "./pages/AppointmentsPage";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
       <Route path={"/"} component={Home} />
-      <Route path={"/appointments"}><ModulePage module="appointments" /></Route>
+      <Route path={"/appointments"} component={AppointmentsPage} />
       <Route path={"/patients"} component={PatientsPage} />
+      <Route path={"/users"} component={UsersPage} />
       <Route path={"/medical-records"}><ModulePage module="medical-records" /></Route>
       <Route path={"/doctors"}><ModulePage module="doctors" /></Route>
       <Route path={"/branches"}><ModulePage module="branches" /></Route>
