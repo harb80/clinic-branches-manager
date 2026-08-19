@@ -247,3 +247,8 @@
 
 - [x] Create the private GitHub repository `clinic-branches-manager` under the connected account.
 - [x] Push the final checkpoint and verify the remote repository contents.
+
+## GitHub visibility
+
+- [x] Change `clinic-branches-manager` repository visibility from private to public.
+- [x] Verify the public repository URL and visibility.
