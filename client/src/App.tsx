@@ -11,6 +11,9 @@ import UsersPage from "./pages/UsersPage";
 import AppointmentsPage from "./pages/AppointmentsPage";
 import BranchesPage from "./pages/BranchesPage";
 import MedicalRecordsPage from "./pages/MedicalRecordsPage";
+import PaymentsPage from "./pages/PaymentsPage";
+import ReportsPage from "./pages/ReportsPage";
+import DoctorsPage from "./pages/DoctorsPage";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -21,10 +24,10 @@ function Router() {
       <Route path={"/patients"} component={PatientsPage} />
       <Route path={"/users"} component={UsersPage} />
       <Route path={"/medical-records"} component={MedicalRecordsPage} />
-      <Route path={"/doctors"}><ModulePage module="doctors" /></Route>
+      <Route path={"/doctors"} component={DoctorsPage} />
       <Route path={"/branches"} component={BranchesPage} />
-      <Route path={"/payments"}><ModulePage module="payments" /></Route>
-      <Route path={"/reports"}><ModulePage module="reports" /></Route>
+      <Route path={"/payments"} component={PaymentsPage} />
+      <Route path={"/reports"} component={ReportsPage} />
       <Route path={"/settings"}><ModulePage module="settings" /></Route>
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}

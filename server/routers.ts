@@ -6,7 +6,7 @@ import { clearInternalSessionCookie, createInternalSession, setInternalSessionCo
 import { storagePut } from "./storage";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { publicProcedure, protectedProcedure, roleProcedure, router } from "./_core/trpc";
 import {
   countInternalUsers,
   createInternalUser,
@@ -19,6 +19,19 @@ import {
   createBranch,
   updateBranch,
   getMedicalVisitForAttachment,
+  createMedicalVisit,
+  assertMedicalVisitScope,
+  listPatientVisits,
+  listMedicalAttachments,
+  listInvoices,
+  getReportsSummary,
+  listDoctors,
+  listSpecialties,
+  createDoctor,
+  createInvoice,
+  getInvoiceReceipt,
+  setInvoiceStatus,
+  recordPayment,
   getUserByLogin,
   hasInternalUserConflict,
   listBranches,
@@ -117,8 +130,61 @@ export const appRouter = router({
       return patient;
     }),
   }),
+  medicalVisits: router({
+    listByPatient: roleProcedure("admin", "super_admin", "branch_manager", "doctor", "receptionist").input(z.object({ patientId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      try {
+        return await listPatientVisits(input.patientId, { userId: ctx.user.id, role: ctx.user.role });
+      } catch (error) {
+        if (error instanceof Error && error.message === "FORBIDDEN_BRANCH_SCOPE") throw new TRPCError({ code: "FORBIDDEN", message: "Medical history is outside your assigned branch scope" });
+        throw error;
+      }
+    }),
+    create: roleProcedure("admin", "super_admin", "branch_manager", "doctor").input(z.object({ appointmentId: z.number().int().positive(), patientId: z.number().int().positive(), doctorId: z.number().int().positive(), chiefComplaint: z.string().max(10000).optional(), diagnosis: z.string().max(10000).optional(), medications: z.string().max(10000).optional(), followUpPlan: z.string().max(10000).optional(), visitNotes: z.string().max(10000).optional() })).mutation(async ({ ctx, input }) => {
+      try {
+        await assertMedicalVisitScope(input, { userId: ctx.user.id, role: ctx.user.role });
+        const visit = await createMedicalVisit(input);
+        if (visit) await writeAuditLog({ userId: ctx.user.id, action: "create", entityType: "medical_visit", entityId: visit.id, metadata: { patientId: input.patientId, appointmentId: input.appointmentId } });
+        return visit;
+      } catch (error) {
+        if (error instanceof Error && error.message === "FORBIDDEN_BRANCH_SCOPE") throw new TRPCError({ code: "FORBIDDEN", message: "Medical visit is outside your assigned branch scope" });
+        throw error;
+      }
+    }),
+  }),
+  doctors: router({
+    list: roleProcedure("admin", "super_admin", "branch_manager", "doctor", "receptionist").query(() => listDoctors()),
+    specialties: roleProcedure("admin", "super_admin", "branch_manager", "doctor", "receptionist").query(() => listSpecialties()),
+    create: roleProcedure("admin", "super_admin", "branch_manager").input(z.object({ specialtyId: z.number().int().positive(), userId: z.number().int().positive().optional(), licenseNumber: z.string().max(80).optional(), phone: z.string().max(40).optional(), consultationFee: z.string(), branchIds: z.array(z.number().int().positive()).min(1) })).mutation(async ({ ctx, input }) => {
+      const doctor = await createDoctor(input);
+      if (doctor?.doctor) await writeAuditLog({ userId: ctx.user.id, action: "create", entityType: "doctor", entityId: doctor.doctor.id, metadata: { branchIds: input.branchIds, specialtyId: input.specialtyId } });
+      return doctor;
+    }),
+  }),
+  reports: router({
+    summary: roleProcedure("admin", "super_admin", "branch_manager", "accountant", "receptionist", "doctor").input(z.object({ branchId: z.number().int().positive().optional(), from: z.string().optional(), to: z.string().optional() })).query(({ input }) => getReportsSummary({ branchId: input.branchId, from: input.from ? new Date(input.from) : undefined, to: input.to ? new Date(input.to) : undefined })),
+  }),
+  billing: router({
+    invoices: roleProcedure("admin", "super_admin", "branch_manager", "receptionist", "accountant").input(z.object({ patientId: z.number().int().positive().optional() })).query(({ input }) => listInvoices(input.patientId)),
+    receipt: roleProcedure("admin", "super_admin", "branch_manager", "receptionist", "accountant").input(z.object({ invoiceId: z.number().int().positive() })).query(({ input }) => getInvoiceReceipt(input.invoiceId)),
+    setStatus: roleProcedure("admin", "super_admin", "branch_manager", "accountant").input(z.object({ invoiceId: z.number().int().positive(), status: z.enum(["cancelled", "refunded"]) })).mutation(async ({ ctx, input }) => {
+      const invoice = await setInvoiceStatus(input.invoiceId, input.status);
+      if (invoice) await writeAuditLog({ userId: ctx.user.id, branchId: invoice.branchId, action: input.status, entityType: "invoice", entityId: invoice.id });
+      return invoice;
+    }),
+    createInvoice: roleProcedure("admin", "super_admin", "branch_manager", "accountant").input(z.object({ invoiceNumber: z.string().trim().min(3).max(50), patientId: z.number().int().positive(), appointmentId: z.number().int().positive().optional(), branchId: z.number().int().positive(), subtotal: z.string(), discount: z.string(), total: z.string() })).mutation(async ({ ctx, input }) => {
+      const invoice = await createInvoice({ ...input, createdBy: ctx.user.id });
+      if (invoice) await writeAuditLog({ userId: ctx.user.id, branchId: input.branchId, action: "create", entityType: "invoice", entityId: invoice.id, metadata: { patientId: input.patientId, total: input.total } });
+      return invoice;
+    }),
+    recordPayment: roleProcedure("admin", "super_admin", "branch_manager", "receptionist", "accountant").input(z.object({ invoiceId: z.number().int().positive(), patientId: z.number().int().positive(), branchId: z.number().int().positive(), amount: z.string(), method: z.enum(["cash", "card", "bank_transfer", "insurance", "other"]), reference: z.string().max(120).optional() })).mutation(async ({ ctx, input }) => {
+      const payment = await recordPayment({ ...input, receivedBy: ctx.user.id });
+      if (payment) await writeAuditLog({ userId: ctx.user.id, branchId: input.branchId, action: "create", entityType: "payment", entityId: payment.id, metadata: { invoiceId: input.invoiceId, amount: input.amount, method: input.method } });
+      return payment;
+    }),
+  }),
   medicalAttachments: router({
-    upload: protectedProcedure.input(z.object({ visitId: z.number().int().positive(), patientId: z.number().int().positive(), fileName: z.string().trim().min(1).max(255), mimeType: z.enum(["application/pdf", "image/jpeg", "image/png", "image/webp"]), dataBase64: z.string().min(1), sizeBytes: z.number().int().positive().max(10 * 1024 * 1024) })).mutation(async ({ ctx, input }) => {
+    listByVisit: roleProcedure("admin", "super_admin", "branch_manager", "doctor", "receptionist").input(z.object({ visitId: z.number().int().positive(), patientId: z.number().int().positive() })).query(({ input }) => listMedicalAttachments(input.visitId, input.patientId)),
+    upload: roleProcedure("admin", "super_admin", "branch_manager", "doctor", "receptionist").input(z.object({ visitId: z.number().int().positive(), patientId: z.number().int().positive(), fileName: z.string().trim().min(1).max(255), mimeType: z.enum(["application/pdf", "image/jpeg", "image/png", "image/webp"]), dataBase64: z.string().min(1), sizeBytes: z.number().int().positive().max(10 * 1024 * 1024) })).mutation(async ({ ctx, input }) => {
       const visit = await getMedicalVisitForAttachment(input.visitId);
       if (!attachmentBelongsToVisit(input, visit)) throw new Error("Attachment must belong to the selected visit and patient");
       const buffer = Buffer.from(input.dataBase64, "base64");

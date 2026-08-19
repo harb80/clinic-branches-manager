@@ -1,4 +1,4 @@
-import { and, asc, count, eq, like, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, like, ne, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
@@ -6,13 +6,19 @@ import {
   branches,
   medicalAttachments,
   medicalVisits,
+  invoices,
+  payments,
   doctors,
+  doctorBranches,
+  specialties,
   InsertUser,
   patients,
   users,
   auditLogs,
+  userBranches,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { calculatePaymentStatus } from "./validation";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -126,6 +132,101 @@ export async function listBranches() {
   return db.select().from(branches).orderBy(asc(branches.nameAr));
 }
 
+export async function listDoctors() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ doctor: doctors, specialty: specialties }).from(doctors).leftJoin(specialties, eq(doctors.specialtyId, specialties.id)).orderBy(asc(doctors.id));
+}
+
+export async function createDoctor(input: { specialtyId: number; userId?: number; licenseNumber?: string; phone?: string; consultationFee: string; branchIds: number[] }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const result = await db.insert(doctors).values({ specialtyId: input.specialtyId, userId: input.userId, licenseNumber: input.licenseNumber, phone: input.phone, consultationFee: input.consultationFee });
+  const doctorId = Number(result[0].insertId);
+  if (input.branchIds.length > 0) await db.insert(doctorBranches).values(input.branchIds.map(branchId => ({ doctorId, branchId })));
+  const rows = await db.select({ doctor: doctors, specialty: specialties }).from(doctors).leftJoin(specialties, eq(doctors.specialtyId, specialties.id)).where(eq(doctors.id, doctorId)).limit(1);
+  return rows[0];
+}
+
+export async function listSpecialties() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(specialties).where(eq(specialties.isActive, true)).orderBy(asc(specialties.nameAr));
+}
+
+export async function getReportsSummary(filters: { branchId?: number; from?: Date; to?: Date }) {
+  const db = await getDb();
+  if (!db) return { bookings: 0, completed: 0, cancelled: 0, noShow: 0, collections: "0.00", newPatients: 0 };
+  const appointmentConditions = [];
+  if (filters.branchId) appointmentConditions.push(eq(appointments.branchId, filters.branchId));
+  if (filters.from) appointmentConditions.push(sql`${appointments.startsAt} >= ${filters.from}`);
+  if (filters.to) appointmentConditions.push(sql`${appointments.startsAt} <= ${filters.to}`);
+  const appointmentRows = await db.select({ status: appointments.status }).from(appointments).where(appointmentConditions.length ? and(...appointmentConditions) : undefined);
+  const paymentConditions = [];
+  if (filters.branchId) paymentConditions.push(eq(payments.branchId, filters.branchId));
+  if (filters.from) paymentConditions.push(sql`${payments.paidAt} >= ${filters.from}`);
+  if (filters.to) paymentConditions.push(sql`${payments.paidAt} <= ${filters.to}`);
+  const paymentRows = await db.select({ amount: payments.amount }).from(payments).where(paymentConditions.length ? and(...paymentConditions) : undefined);
+  const patientConditions = [];
+  if (filters.from) patientConditions.push(sql`${patients.createdAt} >= ${filters.from}`);
+  if (filters.to) patientConditions.push(sql`${patients.createdAt} <= ${filters.to}`);
+  const patientRows = await db.select({ id: patients.id }).from(patients).where(patientConditions.length ? and(...patientConditions) : undefined);
+  return { bookings: appointmentRows.length, completed: appointmentRows.filter(row => row.status === "completed").length, cancelled: appointmentRows.filter(row => row.status === "cancelled").length, noShow: appointmentRows.filter(row => row.status === "no_show").length, collections: paymentRows.reduce((sum, row) => sum + Number(row.amount), 0).toFixed(2), newPatients: patientRows.length };
+}
+
+export async function listInvoices(patientId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return patientId ? db.select().from(invoices).where(eq(invoices.patientId, patientId)).orderBy(sql`${invoices.createdAt} DESC`) : db.select().from(invoices).orderBy(sql`${invoices.createdAt} DESC`);
+}
+
+export async function createInvoice(input: { invoiceNumber: string; patientId: number; appointmentId?: number; branchId: number; subtotal: string; discount: string; total: string; createdBy: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const result = await db.insert(invoices).values(input);
+  const rows = await db.select().from(invoices).where(eq(invoices.id, Number(result[0].insertId))).limit(1);
+  return rows[0];
+}
+
+export async function setInvoiceStatus(invoiceId: number, status: "cancelled" | "refunded") {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const current = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+  if (!current[0]) throw new Error("Invoice not found");
+  if (status === "refunded" && current[0].status !== "paid") throw new Error("Only paid invoices can be refunded");
+  await db.update(invoices).set({ status }).where(eq(invoices.id, invoiceId));
+  const rows = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+  return rows[0];
+}
+
+export async function getInvoiceReceipt(invoiceId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const invoiceRows = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+  const invoice = invoiceRows[0];
+  if (!invoice) return undefined;
+  const paymentRows = await db.select().from(payments).where(eq(payments.invoiceId, invoiceId)).orderBy(sql`${payments.paidAt} DESC`);
+  const paidAmount = paymentRows.reduce((total, payment) => total + Number(payment.amount), 0);
+  return { invoice, payments: paymentRows, paidAmount: paidAmount.toFixed(2), remainingAmount: Math.max(0, Number(invoice.total) - paidAmount).toFixed(2) };
+}
+
+export async function recordPayment(input: { invoiceId: number; patientId: number; branchId: number; amount: string; method: "cash" | "card" | "bank_transfer" | "insurance" | "other"; reference?: string; receivedBy: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const invoiceRows = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId)).limit(1);
+  const invoice = invoiceRows[0];
+  if (!invoice || invoice.patientId !== input.patientId || invoice.branchId !== input.branchId) throw new Error("Invoice scope mismatch");
+  const existing = await db.select({ amount: payments.amount }).from(payments).where(eq(payments.invoiceId, input.invoiceId));
+  const paid = existing.reduce((total, item) => total + Number(item.amount), 0);
+  const amount = Number(input.amount);
+  const total = Number(invoice.total);
+  const status = calculatePaymentStatus(total, paid, amount);
+  const result = await db.insert(payments).values(input);
+  await db.update(invoices).set({ status }).where(eq(invoices.id, input.invoiceId));
+  const rows = await db.select().from(payments).where(eq(payments.id, Number(result[0].insertId))).limit(1);
+  return rows[0];
+}
+
 export async function createBranch(input: { nameAr: string; nameEn: string; code: string; address?: string; phone?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
@@ -225,6 +326,54 @@ export async function getMedicalVisitForAttachment(visitId: number) {
   return result[0];
 }
 
+export async function assertMedicalVisitScope(input: { appointmentId: number; doctorId: number }, access: { userId: number; role: string }) {
+  if (access.role === "admin" || access.role === "super_admin") return;
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const appointment = await db.select({ branchId: appointments.branchId }).from(appointments).where(eq(appointments.id, input.appointmentId)).limit(1);
+  if (!appointment[0]) throw new Error("Appointment not found");
+  const userBranchesForScope = await db.select({ branchId: userBranches.branchId }).from(userBranches).where(and(eq(userBranches.userId, access.userId), eq(userBranches.branchId, appointment[0].branchId)));
+  const doctorBranchesForScope = await db.select({ branchId: doctorBranches.branchId }).from(doctorBranches).where(and(eq(doctorBranches.doctorId, input.doctorId), eq(doctorBranches.branchId, appointment[0].branchId)));
+  if (userBranchesForScope.length === 0 && doctorBranchesForScope.length === 0) throw new Error("FORBIDDEN_BRANCH_SCOPE");
+}
+
+export async function createMedicalVisit(input: { appointmentId: number; patientId: number; doctorId: number; chiefComplaint?: string; diagnosis?: string; medications?: string; followUpPlan?: string; visitNotes?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const result = await db.insert(medicalVisits).values(input);
+  const visitId = Number(result[0].insertId);
+  const created = await db.select().from(medicalVisits).where(eq(medicalVisits.id, visitId)).limit(1);
+  return created[0];
+}
+
+export async function listPatientVisits(patientId: number, access?: { userId: number; role: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  if (!access || access.role === "admin" || access.role === "super_admin") return db.select().from(medicalVisits).where(eq(medicalVisits.patientId, patientId)).orderBy(sql`${medicalVisits.recordedAt} DESC`);
+  const assigned = await db.select({ branchId: userBranches.branchId }).from(userBranches).where(eq(userBranches.userId, access.userId));
+  const directBranchIds = assigned.map(item => item.branchId);
+  let branchIds = directBranchIds;
+  if (access.role === "doctor") {
+    const linkedDoctors = await db.select({ id: doctors.id }).from(doctors).where(eq(doctors.userId, access.userId));
+    const doctorIds = linkedDoctors.map(item => item.id);
+    if (doctorIds.length > 0) {
+      const doctorAssigned = await db.select({ branchId: doctorBranches.branchId }).from(doctorBranches).where(inArray(doctorBranches.doctorId, doctorIds));
+      branchIds = Array.from(new Set([...branchIds, ...doctorAssigned.map(item => item.branchId)]));
+    }
+  }
+  if (branchIds.length === 0) throw new Error("FORBIDDEN_BRANCH_SCOPE");
+  const allVisits = await db.select({ id: medicalVisits.id }).from(medicalVisits).where(eq(medicalVisits.patientId, patientId)).limit(1);
+  const scopedVisits = await db.select({ id: medicalVisits.id, appointmentId: medicalVisits.appointmentId, patientId: medicalVisits.patientId, doctorId: medicalVisits.doctorId, chiefComplaint: medicalVisits.chiefComplaint, diagnosis: medicalVisits.diagnosis, medications: medicalVisits.medications, followUpPlan: medicalVisits.followUpPlan, visitNotes: medicalVisits.visitNotes, recordedAt: medicalVisits.recordedAt, updatedAt: medicalVisits.updatedAt }).from(medicalVisits).innerJoin(appointments, eq(medicalVisits.appointmentId, appointments.id)).where(and(eq(medicalVisits.patientId, patientId), inArray(appointments.branchId, branchIds))).orderBy(sql`${medicalVisits.recordedAt} DESC`);
+  if (allVisits.length > 0 && scopedVisits.length === 0) throw new Error("FORBIDDEN_BRANCH_SCOPE");
+  return scopedVisits;
+}
+
+export async function listMedicalAttachments(visitId: number, patientId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(medicalAttachments).where(and(eq(medicalAttachments.visitId, visitId), eq(medicalAttachments.patientId, patientId))).orderBy(sql`${medicalAttachments.uploadedAt} DESC`);
+}
+
 export async function createMedicalAttachment(input: {
   visitId: number;
   patientId: number;
@@ -237,6 +386,8 @@ export async function createMedicalAttachment(input: {
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
+  const visit = await getMedicalVisitForAttachment(input.visitId);
+  if (!visit || visit.patientId !== input.patientId) throw new Error("Attachment visit ownership mismatch");
   const result = await db.insert(medicalAttachments).values(input);
   const attachmentId = Number(result[0].insertId);
   const created = await db.select().from(medicalAttachments).where(eq(medicalAttachments.id, attachmentId)).limit(1);

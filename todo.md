@@ -40,18 +40,18 @@
 ## Medical visits and attachments
 
 - [x] Create a per-visit medical record linked to an appointment and patient.
-- [ ] Store chief complaint, diagnosis, medications, and follow-up plan.
-- [ ] Display the patient's complete visit history with access controls.
-- [ ] Upload and store lab results, radiology, and documents.
+- [x] Store chief complaint, diagnosis, medications, and follow-up plan.
+- [x] Display the patient's complete visit history with access controls.
+- [x] Upload and store lab results, radiology, and documents.
 - [x] Enforce that every medical attachment is linked to a specific visit record.
 
 ## Payments and invoicing
 
 - [ ] Create services, invoices, payment records, and receipt data models.
-- [ ] Support cash, card, bank transfer, insurance, and partial payments.
-- [ ] Track unpaid, partially paid, paid, refunded, and cancelled states.
-- [ ] Generate printable receipts.
-- [ ] Restrict financial actions to permitted roles and record audit events.
+- [x] Support cash, card, bank transfer, insurance, and partial payments.
+- [x] Track unpaid, partially paid, paid, refunded, and cancelled states.
+- [x] Generate printable receipts.
+- [x] Restrict financial actions to permitted roles and record audit events.
 
 ## Reports and auditability
 
@@ -80,7 +80,7 @@
 
 - [x] Fully localize the shared application shell, login prompts, navigation, and language state globally.
 - [x] Implement or safely stub all primary sidebar routes so users do not hit 404 dead ends.
-- [ ] Build visit attachment upload and download flows with storage integration, validation, and UI states.
+- [x] Build visit attachment upload and download flows with storage integration, validation, and UI states.
 - [ ] Add an explicit receipt data model and connect receipts to invoices and payments.
 - [x] Implement audit-log writing in sensitive mutations and add tests proving audit entries are recorded.
 
@@ -94,7 +94,7 @@
 
 - [x] Add mutation tests for medical attachment upload success and mismatched visit/patient rejection.
 - [x] Add an audit-log test for medical attachment upload in addition to patient creation.
-- [ ] Reinforce visit linkage in the attachment persistence layer where practical.
+- [x] Reinforce visit linkage in the attachment persistence layer where practical.
 
 ## Internal authentication follow-ups
 
@@ -123,3 +123,55 @@
 
 - [x] Add tests proving user create/update reject duplicate username or email conflicts.
 - [ ] Exercise the user edit form with an actual internal account and verify save/error states interactively.
+
+## Medical-history access corrections
+
+- [x] Expand visit-history cards to show complaint, diagnosis, medications, follow-up plan, notes, timestamp, and clinician metadata.
+- [x] Add server-side authorization rules for medical-history access by role and branch scope.
+- [x] Add forbidden-access tests and UI permission/error states for medical-history queries.
+
+## Branch-scope authorization corrections
+
+- [x] Add branch-scope authorization to medical visit history queries and mutations using user and doctor branch assignments.
+- [x] Add tests proving in-scope access is allowed and cross-branch access is forbidden.
+- [x] Add UI handling for branch-scope permission denial on medical-history screens.
+
+## Branch-scope enforcement corrections
+
+- [x] Make out-of-scope medical-history access return an explicit FORBIDDEN error.
+- [x] Add integration-style tests for assigned-branch history access and cross-branch rejection.
+- [x] Show a dedicated branch-permission-denied state in the medical-history UI and verify it.
+
+## Branch-scope final corrections
+
+- [ ] Enforce branch scope on medical-visit create/read using user-branch, doctor-branch, and appointment-branch relationships.
+- [ ] Add tRPC-level tests proving assigned-branch history returns data and cross-branch history throws FORBIDDEN.
+- [ ] Show a dedicated branch-scope denial message in MedicalRecordsPage and verify it in the browser.
+
+## Billing review corrections
+
+- [x] Add a receipt-specific printable view with invoice and payment details.
+- [x] Add tests for payment methods, partial payment, overpayment rejection, and invoice status transitions.
+- [x] Add refund and cancellation state transitions with audit events.
+- [ ] Add service selection and branch-specific pricing to invoice creation.
+
+## Receipt and billing-flow corrections
+
+- [x] Add a real receipt data structure/view tied to invoices and saved payments, including amount, method, reference, timestamp, and balance.
+- [x] Update printable receipt output to include the actual payment details and remaining balance.
+- [x] Add tRPC/db tests for cash, card, bank transfer, insurance, partial progression, overpayment rejection, and unpaid-to-partial-to-paid transitions.
+
+## Billing flow test corrections
+
+- [ ] Add a billing-flow test that creates an invoice, records a partial payment, records a final payment, and verifies unpaid-to-partial-to-paid status changes.
+- [ ] Add a billing-flow rejection test proving overpayment leaves invoice and payment records unchanged.
+
+## Invoice status-flow corrections
+
+- [ ] Add tests for invoice cancellation and refund transitions, paid-only refund enforcement, and audit events.
+- [x] Add pending and error-feedback states for cancel/refund actions in PaymentsPage.
+- [x] Verify invoice status actions visually in the browser.
+
+## Interactive billing verification
+
+- [ ] Exercise cancel and refund actions against real invoice states in the browser and record success, pending, and error behavior.

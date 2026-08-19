@@ -24,3 +24,13 @@ export const medicalAttachmentInput = z.object({
 export function attachmentBelongsToVisit(input: { visitId: number; patientId: number }, visit: { id: number; patientId: number } | undefined) {
   return Boolean(visit && visit.id === input.visitId && visit.patientId === input.patientId);
 }
+
+export function canAccessBranch(role: string, assignedBranchIds: number[], targetBranchId: number) {
+  if (role === "admin" || role === "super_admin") return true;
+  return assignedBranchIds.includes(targetBranchId);
+}
+
+export function calculatePaymentStatus(invoiceTotal: number, alreadyPaid: number, newPayment: number) {
+  if (!Number.isFinite(invoiceTotal) || invoiceTotal <= 0 || !Number.isFinite(newPayment) || newPayment <= 0 || alreadyPaid + newPayment > invoiceTotal) throw new Error("Payment exceeds invoice balance");
+  return alreadyPaid + newPayment >= invoiceTotal ? "paid" as const : "partial" as const;
+}
