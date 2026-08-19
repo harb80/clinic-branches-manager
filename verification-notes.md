@@ -20,3 +20,23 @@ The first bootstrap attempt with an invalid email was rejected by server validat
 - `/users` rendered successfully with the internal account table and edit action visible.
 - `/doctors` rendered successfully with specialty management, visible edit icons, activation controls, doctor form, and schedule form.
 - TypeScript and Vitest passed after these updates; interactive save/error flows remain pending because the preview currently contains no branch records and only the bootstrap account.
+
+## Appointment calendar visual review
+
+The `/appointments` preview rendered successfully in Arabic RTL at desktop size. The page shows the appointment heading, navigation controls, branch/doctor/status filter controls, daily schedule card, and a clear empty-state message. The weekly time-grid path is implemented in the same page and is covered by type checks and contract tests; populated-data rendering still requires seeded appointment records for a full visual pass.
+
+## Doctors profile visual review
+
+The `/doctors` preview rendered successfully in Arabic RTL after the JSX repair. The page shows specialty management with edit/deactivate controls, the doctor form, a multi-select branch control, an empty registered-doctors state, and the weekly schedule form. TypeScript and Vitest passed with the doctor update contract coverage.
+
+## Final verification run
+
+- `pnpm exec tsc --noEmit`: passed with no TypeScript errors.
+- `pnpm test -- --run`: 44 tests passed across 5 test files.
+- `pnpm build`: passed for the client and server bundle. Vite reported only the existing chunk-size advisory.
+- `/doctors` full-page preview: rendered successfully in Arabic RTL; no current browser runtime failure was observed. Earlier Vite syntax messages in the log are historical entries from before the repaired file was reloaded.
+- Patient phone uniqueness: applied `patients_phone_unique` at the database layer and kept the application-level duplicate feedback.
+
+## Desktop route review
+
+A desktop full-page capture covered `/`, `/branches`, `/users`, `/doctors`, `/appointments`, `/payments`, and `/reports` in Arabic RTL. The dashboard showed the authenticated Super Admin role and expected zero-state metrics; branches showed the empty branch directory and working-hours form; users showed the internal account row and edit/activation controls; doctors showed specialty, doctor, and schedule forms; appointments showed calendar filters and an empty daily schedule; payments showed invoice/payment forms and an empty invoice list; reports showed branch/date filters and zero-state metrics. These are visual route checks, not a substitute for clicking save/error actions against populated branch, appointment, or invoice records.

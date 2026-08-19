@@ -290,6 +290,12 @@ export async function listDoctors() {
   return db.select({ doctor: doctors, specialty: specialties }).from(doctors).leftJoin(specialties, eq(doctors.specialtyId, specialties.id)).orderBy(asc(doctors.id));
 }
 
+export async function listDoctorBranches(doctorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ branchId: doctorBranches.branchId }).from(doctorBranches).where(eq(doctorBranches.doctorId, doctorId));
+}
+
 export async function createDoctor(input: { specialtyId: number; userId?: number; licenseNumber?: string; phone?: string; consultationFee: string; branchIds: number[] }) {
   await ensureRequiredSpecialties();
   const db = await getDb();
@@ -298,6 +304,16 @@ export async function createDoctor(input: { specialtyId: number; userId?: number
   const doctorId = Number(result[0].insertId);
   if (input.branchIds.length > 0) await db.insert(doctorBranches).values(input.branchIds.map(branchId => ({ doctorId, branchId })));
   const rows = await db.select({ doctor: doctors, specialty: specialties }).from(doctors).leftJoin(specialties, eq(doctors.specialtyId, specialties.id)).where(eq(doctors.id, doctorId)).limit(1);
+  return rows[0];
+}
+
+export async function updateDoctor(input: { id: number; specialtyId: number; userId?: number; licenseNumber?: string; phone?: string; consultationFee: string; branchIds: number[] }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.update(doctors).set({ specialtyId: input.specialtyId, userId: input.userId, licenseNumber: input.licenseNumber, phone: input.phone, consultationFee: input.consultationFee }).where(eq(doctors.id, input.id));
+  await db.delete(doctorBranches).where(eq(doctorBranches.doctorId, input.id));
+  if (input.branchIds.length > 0) await db.insert(doctorBranches).values(input.branchIds.map(branchId => ({ doctorId: input.id, branchId })));
+  const rows = await db.select({ doctor: doctors, specialty: specialties }).from(doctors).leftJoin(specialties, eq(doctors.specialtyId, specialties.id)).where(eq(doctors.id, input.id)).limit(1);
   return rows[0];
 }
 
@@ -466,11 +482,25 @@ export async function updateBranch(id: number, input: { nameAr?: string; nameEn?
   return result[0];
 }
 
-export async function listAppointments(date?: string) {
+export async function listAppointments(input?: { date?: string; from?: string; to?: string; branchId?: number; doctorId?: number; status?: string }) {
   const db = await getDb();
   if (!db) return [];
-  const day = date ?? new Date().toISOString().slice(0, 10);
-  return db.select().from(appointments).where(sql`DATE(${appointments.startsAt}) = ${day}`).orderBy(asc(appointments.startsAt));
+  const day = input?.date ?? new Date().toISOString().slice(0, 10);
+  const conditions = [
+    input?.from && input?.to ? sql`DATE(${appointments.startsAt}) BETWEEN ${input.from} AND ${input.to}` : sql`DATE(${appointments.startsAt}) = ${day}`,
+    input?.branchId ? eq(appointments.branchId, input.branchId) : undefined,
+    input?.doctorId ? eq(appointments.doctorId, input.doctorId) : undefined,
+    input?.status ? eq(appointments.status, input.status as typeof appointments.status.enumValues[number]) : undefined,
+  ].filter(Boolean) as Array<ReturnType<typeof eq>>;
+  const rows = await db.select().from(appointments).where(and(...conditions)).orderBy(asc(appointments.startsAt));
+  return Promise.all(rows.map(async row => {
+    const [patient, branch, doctor] = await Promise.all([
+      db.select({ name: patients.fullName }).from(patients).where(eq(patients.id, row.patientId)).limit(1),
+      db.select({ nameAr: branches.nameAr, nameEn: branches.nameEn }).from(branches).where(eq(branches.id, row.branchId)).limit(1),
+      db.select({ name: users.name, licenseNumber: doctors.licenseNumber }).from(doctors).leftJoin(users, eq(doctors.userId, users.id)).where(eq(doctors.id, row.doctorId)).limit(1),
+    ]);
+    return { ...row, patientName: patient[0]?.name ?? null, branchNameAr: branch[0]?.nameAr ?? null, branchNameEn: branch[0]?.nameEn ?? null, doctorName: doctor[0]?.name ?? null, doctorLicense: doctor[0]?.licenseNumber ?? null };
+  }));
 }
 
 export async function getDoctorAvailability(input: { doctorId: number; branchId: number; date: string }) {
@@ -533,6 +563,36 @@ export async function createAppointment(input: {
   const created = await db.select().from(appointments).where(eq(appointments.id, appointmentId)).limit(1);
   await recordSyncOperation({ operationId: input.clientOperationId, entityType: "appointment", entityId: appointmentId, branchId: input.branchId });
   return created[0];
+}
+
+export async function getAppointmentById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(appointments).where(eq(appointments.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function updateAppointment(input: { appointmentId: number; branchId: number; doctorId: number; startsAt: Date; endsAt: Date; visitType: "new" | "follow_up" | "emergency" | "procedure"; notes?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  if (input.endsAt <= input.startsAt) throw new Error("Appointment end time must be after start time");
+  const current = await getAppointmentById(input.appointmentId);
+  if (!current) throw new Error("Appointment not found");
+  const assignment = await db.select({ id: doctorBranches.id }).from(doctorBranches).where(and(eq(doctorBranches.doctorId, input.doctorId), eq(doctorBranches.branchId, input.branchId))).limit(1);
+  if (!assignment[0]) throw new Error("Doctor is not assigned to this branch");
+  if (input.visitType !== "emergency") {
+    const toMinutes = (value: string) => { const [hours, minutes] = value.split(":").map(Number); return hours * 60 + minutes; };
+    const dayOfWeek = input.startsAt.getUTCDay();
+    const startsMinutes = input.startsAt.getUTCHours() * 60 + input.startsAt.getUTCMinutes();
+    const endsMinutes = input.endsAt.getUTCHours() * 60 + input.endsAt.getUTCMinutes();
+    const schedules = await db.select().from(doctorSchedules).where(and(eq(doctorSchedules.doctorId, input.doctorId), eq(doctorSchedules.branchId, input.branchId), eq(doctorSchedules.dayOfWeek, dayOfWeek), eq(doctorSchedules.isActive, true)));
+    if (schedules.length === 0 || !schedules.some(schedule => startsMinutes >= toMinutes(schedule.startsAt) && endsMinutes <= toMinutes(schedule.endsAt))) throw new Error("Appointment is outside the doctor's schedule");
+  }
+  const overlapping = await db.select({ id: appointments.id }).from(appointments).where(and(eq(appointments.doctorId, input.doctorId), eq(appointments.branchId, input.branchId), sql`${appointments.id} <> ${input.appointmentId}`, sql`${appointments.status} NOT IN ('cancelled', 'no_show')`, sql`${appointments.startsAt} < ${input.endsAt}`, sql`${appointments.endsAt} > ${input.startsAt}`)).limit(1);
+  if (overlapping[0]) throw new Error("Doctor already has an overlapping appointment");
+  await db.update(appointments).set({ branchId: input.branchId, doctorId: input.doctorId, startsAt: input.startsAt, endsAt: input.endsAt, visitType: input.visitType, notes: input.notes }).where(eq(appointments.id, input.appointmentId));
+  const rows = await db.select().from(appointments).where(eq(appointments.id, input.appointmentId)).limit(1);
+  return rows[0];
 }
 
 export async function updateAppointmentStatus(input: { appointmentId: number; status: "booked" | "confirmed" | "arrived" | "completed" | "cancelled" | "no_show"; changedBy: number }) {

@@ -17,6 +17,8 @@ import {
   getPatientByClientOperationId,
   getDashboardSummary,
   createAppointment,
+  getAppointmentById,
+  updateAppointment,
   getDoctorAvailability,
   updateAppointmentStatus,
   listAppointments,
@@ -30,10 +32,12 @@ import {
   listInvoices,
   getReportsSummary,
   listDoctors,
+  listDoctorBranches,
   listSpecialties,
   createSpecialty,
   updateSpecialty,
   createDoctor,
+  updateDoctor,
   createInvoice,
   getInvoiceReceipt,
   setInvoiceStatus,
@@ -121,11 +125,17 @@ export const appRouter = router({
     }),
   }),
   appointments: router({
-    list: protectedProcedure.input(z.object({ date: z.string().optional() }).optional()).query(({ input }) => listAppointments(input?.date)),
+    list: protectedProcedure.input(z.object({ date: z.string().optional(), from: z.string().optional(), to: z.string().optional(), branchId: z.number().int().positive().optional(), doctorId: z.number().int().positive().optional(), status: z.enum(["booked", "confirmed", "arrived", "completed", "cancelled", "no_show"]).optional() }).optional()).query(({ input }) => listAppointments(input)),
+    byId: protectedProcedure.input(z.object({ appointmentId: z.number().int().positive() })).query(({ input }) => getAppointmentById(input.appointmentId)),
     availability: protectedProcedure.input(z.object({ doctorId: z.number().int().positive(), branchId: z.number().int().positive(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })).query(({ input }) => getDoctorAvailability(input)),
     create: protectedProcedure.input(z.object({ patientId: z.number().int().positive(), branchId: z.number().int().positive(), doctorId: z.number().int().positive(), serviceId: z.number().int().positive().optional(), clientOperationId: z.string().trim().min(8).max(100).optional(), startsAt: z.string().datetime(), endsAt: z.string().datetime(), visitType: z.enum(["new", "follow_up", "emergency", "procedure"]), notes: z.string().max(5000).optional() })).mutation(async ({ ctx, input }) => {
       const appointment = await createAppointment({ ...input, startsAt: new Date(input.startsAt), endsAt: new Date(input.endsAt), createdBy: ctx.user.id });
       if (appointment) await writeAuditLog({ userId: ctx.user.id, branchId: appointment.branchId, action: "create", entityType: "appointment", entityId: appointment.id });
+      return appointment;
+    }),
+    update: protectedProcedure.input(z.object({ appointmentId: z.number().int().positive(), branchId: z.number().int().positive(), doctorId: z.number().int().positive(), startsAt: z.string().datetime(), endsAt: z.string().datetime(), visitType: z.enum(["new", "follow_up", "emergency", "procedure"]), notes: z.string().max(5000).optional() })).mutation(async ({ ctx, input }) => {
+      const appointment = await updateAppointment({ ...input, startsAt: new Date(input.startsAt), endsAt: new Date(input.endsAt) });
+      if (appointment) await writeAuditLog({ userId: ctx.user.id, branchId: appointment.branchId, action: "update", entityType: "appointment", entityId: appointment.id });
       return appointment;
     }),
     updateStatus: protectedProcedure.input(z.object({ appointmentId: z.number().int().positive(), status: z.enum(["booked", "confirmed", "arrived", "completed", "cancelled", "no_show"]) })).mutation(async ({ ctx, input }) => {
@@ -189,6 +199,7 @@ export const appRouter = router({
   }),
   doctors: router({
     list: roleProcedure("admin", "super_admin", "branch_manager", "doctor", "receptionist").query(() => listDoctors()),
+    branches: roleProcedure("admin", "super_admin", "branch_manager").input(z.object({ doctorId: z.number().int().positive() })).query(({ input }) => listDoctorBranches(input.doctorId)),
     specialties: roleProcedure("admin", "super_admin", "branch_manager", "doctor", "receptionist").query(() => listSpecialties()),
     createSpecialty: roleProcedure("admin", "super_admin").input(z.object({ nameAr: z.string().trim().min(2).max(160), nameEn: z.string().trim().min(2).max(160) })).mutation(async ({ ctx, input }) => { const specialty = await createSpecialty(input); if (specialty) await writeAuditLog({ userId: ctx.user.id, action: "create", entityType: "specialty", entityId: specialty.id }); return specialty; }),
     updateSpecialty: roleProcedure("admin", "super_admin").input(z.object({ id: z.number().int().positive(), nameAr: z.string().trim().min(2).max(160).optional(), nameEn: z.string().trim().min(2).max(160).optional(), isActive: z.boolean().optional() })).mutation(async ({ ctx, input }) => { const specialty = await updateSpecialty(input); if (specialty) await writeAuditLog({ userId: ctx.user.id, action: "update", entityType: "specialty", entityId: specialty.id }); return specialty; }),
@@ -199,6 +210,11 @@ export const appRouter = router({
     create: roleProcedure("admin", "super_admin", "branch_manager").input(z.object({ specialtyId: z.number().int().positive(), userId: z.number().int().positive().optional(), licenseNumber: z.string().max(80).optional(), phone: z.string().max(40).optional(), consultationFee: z.string(), branchIds: z.array(z.number().int().positive()).min(1) })).mutation(async ({ ctx, input }) => {
       const doctor = await createDoctor(input);
       if (doctor?.doctor) await writeAuditLog({ userId: ctx.user.id, action: "create", entityType: "doctor", entityId: doctor.doctor.id, metadata: { branchIds: input.branchIds, specialtyId: input.specialtyId } });
+      return doctor;
+    }),
+    update: roleProcedure("admin", "super_admin", "branch_manager").input(z.object({ id: z.number().int().positive(), specialtyId: z.number().int().positive(), userId: z.number().int().positive().optional(), licenseNumber: z.string().max(80).optional(), phone: z.string().max(40).optional(), consultationFee: z.string(), branchIds: z.array(z.number().int().positive()).min(1) })).mutation(async ({ ctx, input }) => {
+      const doctor = await updateDoctor(input);
+      if (doctor?.doctor) await writeAuditLog({ userId: ctx.user.id, action: "update", entityType: "doctor", entityId: doctor.doctor.id, metadata: { branchIds: input.branchIds, specialtyId: input.specialtyId } });
       return doctor;
     }),
   }),

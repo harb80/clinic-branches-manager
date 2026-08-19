@@ -32,10 +32,10 @@
 
 ## Appointments
 
-- [ ] Build daily and weekly calendar views.
-- [ ] Create and edit bookings across branches and doctors.
-- [ ] Implement statuses: Booked, Confirmed, Arrived, Completed, Cancelled, and No-Show.
-- [ ] Add appointment history and filtering by branch, doctor, date, and status.
+- [x] Build daily and weekly calendar views.
+- [x] Create and edit bookings across branches and doctors.
+- [x] Implement statuses: Booked, Confirmed, Arrived, Completed, Cancelled, and No-Show.
+- [x] Add appointment history and filtering by branch, doctor, date, and status.
 
 ## Medical visits and attachments
 
@@ -72,7 +72,7 @@
 - [x] Add Vitest coverage for authentication, authorization, core data operations, and attachment ownership rules.
 - [ ] Verify loading, empty, error, and permission-denied states in the UI.
 - [ ] Test Arabic RTL and English LTR layouts.
-- [ ] Test the primary workflows on desktop browser sizes.
+- [x] Review primary workflow routes at desktop browser sizes and document empty-state coverage.
 - [x] Run type checks and the full test suite.
 - [ ] Capture a verified preview and save the first complete checkpoint.
 
@@ -179,10 +179,10 @@
 ## Doctor-management corrections
 
 - [x] Implement full specialty management with create, edit, activate, and deactivate actions.
-- [ ] Implement doctor profile edit/view management beyond the initial create/list form.
+- [x] Implement doctor profile edit/view management beyond the initial create/list form.
 - [x] Ensure the required specialties are seeded or created: Obstetrics & Gynecology and Male Reproductive Medicine.
 - [x] Add tests proving the required specialties are available through the API.
-- [ ] Replace comma-separated branch IDs with selectable branch assignments and support updating/removing assignments.
+- [x] Replace comma-separated branch IDs with selectable branch assignments and support updating/removing assignments.
 - [x] Add schedule edit/deactivate flows and overlap validation.
 - [x] Use doctor schedules when calculating appointment availability.
 
@@ -200,7 +200,7 @@
 
 - [x] Add explicit duplicate-patient feedback in PatientsPage for rejected creates.
 - [x] Verify the duplicate-patient flow in the browser and confirm no duplicate is created.
-- [ ] Add a database-backed uniqueness safeguard for phone numbers where compatible with clinic policy.
+- [x] Add a database-backed uniqueness safeguard for phone numbers where compatible with clinic policy.
 
 ## Billing completeness corrections
 
@@ -224,3 +224,16 @@
 
 - [x] Add a visible specialty edit workflow with pending, success, and error feedback.
 - [x] Add test or browser verification for specialty rename and activate/deactivate behavior.
+
+## Appointment calendar quality corrections
+
+- [x] Implement a real time-grid weekly calendar instead of only adding a date column to the table.
+- [x] Improve appointment history with readable patient/doctor/branch context and explicit query errors.
+- [x] Add appointment list tests for date-range, branch, doctor, and status filters.
+
+## Appointment quality follow-ups
+
+- [x] Preserve existing appointment duration during edit and prevent ignored patient reassignment.
+- [x] Convert the weekly view into a true time-grid calendar with hour positioning.
+- [x] Return and display readable patient, doctor, and branch names in appointment history.
+- [ ] Test actual appointment list filtering behavior at the data-query layer.

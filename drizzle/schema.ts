@@ -152,7 +152,7 @@ export const patients = mysqlTable(
     clientOperationId: varchar("clientOperationId", { length: 100 }).unique(),
     patientNumber: varchar("patientNumber", { length: 40 }).notNull().unique(),
     fullName: varchar("fullName", { length: 220 }).notNull(),
-    phone: varchar("phone", { length: 40 }).notNull(),
+    phone: varchar("phone", { length: 40 }).notNull().unique(),
     email: varchar("email", { length: 320 }),
     dateOfBirth: timestamp("dateOfBirth"),
     gender: mysqlEnum("gender", ["female", "male", "other"]).default("female").notNull(),

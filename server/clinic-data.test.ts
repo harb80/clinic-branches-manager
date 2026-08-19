@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   createMedicalVisit: vi.fn(),
   createAppointment: vi.fn(),
   updateAppointmentStatus: vi.fn(),
+  listAppointments: vi.fn(),
+  getAppointmentById: vi.fn(),
+  updateAppointment: vi.fn(),
   createInvoice: vi.fn(),
   recordPayment: vi.fn(),
   listInvoices: vi.fn(),
@@ -12,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   setInvoiceStatus: vi.fn(),
   listSpecialties: vi.fn(),
   updateSpecialty: vi.fn(),
+  updateDoctor: vi.fn(),
   hasPatientConflict: vi.fn(),
   getPatientByClientOperationId: vi.fn(),
   createPatient: vi.fn(),
@@ -32,6 +36,9 @@ vi.mock("./db", () => ({
   createMedicalVisit: mocks.createMedicalVisit,
   createAppointment: mocks.createAppointment,
   updateAppointmentStatus: mocks.updateAppointmentStatus,
+  listAppointments: mocks.listAppointments,
+  getAppointmentById: mocks.getAppointmentById,
+  updateAppointment: mocks.updateAppointment,
   createInvoice: mocks.createInvoice,
   recordPayment: mocks.recordPayment,
   listInvoices: mocks.listInvoices,
@@ -39,6 +46,7 @@ vi.mock("./db", () => ({
   setInvoiceStatus: mocks.setInvoiceStatus,
   listSpecialties: mocks.listSpecialties,
   updateSpecialty: mocks.updateSpecialty,
+  updateDoctor: mocks.updateDoctor,
   hasPatientConflict: mocks.hasPatientConflict,
   getPatientByClientOperationId: mocks.getPatientByClientOperationId,
   createPatient: mocks.createPatient,
@@ -135,6 +143,29 @@ describe("clinic data operations", () => {
     expect(mocks.createAppointment).toHaveBeenCalledWith(expect.objectContaining({ clientOperationId: "appointment-op-123" }));
     await caller.billing.recordPayment({ invoiceId: 31, patientId: 10, branchId: 1, amount: "10", method: "cash", clientOperationId: "payment-op-123" });
     expect(mocks.recordPayment).toHaveBeenCalledWith(expect.objectContaining({ clientOperationId: "payment-op-123" }));
+  });
+
+  it("passes doctor profile and branch assignment updates through the protected procedure", async () => {
+    const caller = appRouter.createCaller(createContext("branch_manager"));
+    mocks.updateDoctor.mockResolvedValueOnce({ doctor: { id: 5 }, specialty: { id: 2 } });
+    const result = await caller.doctors.update({ id: 5, specialtyId: 2, licenseNumber: "LIC-5", phone: "0100", consultationFee: "250", branchIds: [1, 3] });
+    expect(mocks.updateDoctor).toHaveBeenCalledWith({ id: 5, specialtyId: 2, licenseNumber: "LIC-5", phone: "0100", consultationFee: "250", branchIds: [1, 3] });
+    expect(result?.doctor.id).toBe(5);
+  });
+
+  it("passes appointment edit data through the protected update procedure", async () => {
+    const caller = appRouter.createCaller(createContext("receptionist"));
+    mocks.updateAppointment.mockResolvedValueOnce({ id: 9, branchId: 2, doctorId: 7, status: "booked" });
+    const result = await caller.appointments.update({ appointmentId: 9, branchId: 2, doctorId: 7, startsAt: "2026-08-20T09:00:00.000Z", endsAt: "2026-08-20T09:30:00.000Z", visitType: "follow_up", notes: "updated" });
+    expect(mocks.updateAppointment).toHaveBeenCalledWith(expect.objectContaining({ appointmentId: 9, branchId: 2, doctorId: 7, visitType: "follow_up", startsAt: new Date("2026-08-20T09:00:00.000Z"), endsAt: new Date("2026-08-20T09:30:00.000Z") }));
+    expect(result?.id).toBe(9);
+  });
+
+  it("passes weekly appointment range and filters through the list procedure", async () => {
+    const caller = appRouter.createCaller(createContext("receptionist"));
+    mocks.listAppointments.mockResolvedValueOnce([]);
+    await caller.appointments.list({ from: "2026-08-17", to: "2026-08-23", branchId: 2, doctorId: 7, status: "arrived" });
+    expect(mocks.listAppointments).toHaveBeenCalledWith({ from: "2026-08-17", to: "2026-08-23", branchId: 2, doctorId: 7, status: "arrived" });
   });
 
   it("updates specialty names and active state through the admin procedure", async () => {
