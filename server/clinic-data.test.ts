@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getInvoiceReceipt: vi.fn(),
   setInvoiceStatus: vi.fn(),
   listSpecialties: vi.fn(),
+  updateSpecialty: vi.fn(),
   hasPatientConflict: vi.fn(),
   getPatientByClientOperationId: vi.fn(),
   createPatient: vi.fn(),
@@ -21,6 +22,9 @@ const mocks = vi.hoisted(() => ({
   searchPatients: vi.fn(),
   listPatientVisits: vi.fn(),
   writeAuditLog: vi.fn(),
+  getReportsSummary: vi.fn(),
+  listUserBranchIds: vi.fn(),
+  replaceUserBranches: vi.fn(),
 }));
 
 vi.mock("./db", () => ({
@@ -34,11 +38,15 @@ vi.mock("./db", () => ({
   getInvoiceReceipt: mocks.getInvoiceReceipt,
   setInvoiceStatus: mocks.setInvoiceStatus,
   listSpecialties: mocks.listSpecialties,
+  updateSpecialty: mocks.updateSpecialty,
   hasPatientConflict: mocks.hasPatientConflict,
   getPatientByClientOperationId: mocks.getPatientByClientOperationId,
   createPatient: mocks.createPatient,
   updateInternalUser: mocks.updateInternalUser,
   getDashboardSummary: vi.fn(),
+  getReportsSummary: mocks.getReportsSummary,
+  listUserBranchIds: mocks.listUserBranchIds,
+  replaceUserBranches: mocks.replaceUserBranches,
   getMedicalVisitForAttachment: mocks.getMedicalVisitForAttachment,
   assertMedicalVisitScope: mocks.assertMedicalVisitScope,
   hasInternalUserConflict: mocks.hasInternalUserConflict,
@@ -127,6 +135,33 @@ describe("clinic data operations", () => {
     expect(mocks.createAppointment).toHaveBeenCalledWith(expect.objectContaining({ clientOperationId: "appointment-op-123" }));
     await caller.billing.recordPayment({ invoiceId: 31, patientId: 10, branchId: 1, amount: "10", method: "cash", clientOperationId: "payment-op-123" });
     expect(mocks.recordPayment).toHaveBeenCalledWith(expect.objectContaining({ clientOperationId: "payment-op-123" }));
+  });
+
+  it("updates specialty names and active state through the admin procedure", async () => {
+    const caller = appRouter.createCaller(createContext("super_admin"));
+    mocks.updateSpecialty.mockResolvedValueOnce({ id: 4, nameAr: "نساء محدث", nameEn: "Updated Gynecology", isActive: false });
+    const result = await caller.doctors.updateSpecialty({ id: 4, nameAr: "نساء محدث", nameEn: "Updated Gynecology", isActive: false });
+    expect(mocks.updateSpecialty).toHaveBeenCalledWith({ id: 4, nameAr: "نساء محدث", nameEn: "Updated Gynecology", isActive: false });
+    expect(result.isActive).toBe(false);
+  });
+
+  it("allows an admin to persist user branch assignments", async () => {
+    const caller = appRouter.createCaller(createContext("super_admin"));
+    mocks.replaceUserBranches.mockResolvedValueOnce([1, 3]);
+    const result = await caller.users.setBranches({ userId: 12, branchIds: [1, 3, 3] });
+    expect(mocks.replaceUserBranches).toHaveBeenCalledWith(12, [1, 3, 3]);
+    expect(result).toEqual([1, 3]);
+    expect(mocks.writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({ entityType: "user_branches", entityId: 12 }));
+  });
+
+  it("passes report filters and returns attendance and financial indicators", async () => {
+    const caller = appRouter.createCaller(createContext("accountant"));
+    mocks.getReportsSummary.mockResolvedValueOnce({ bookings: 4, arrived: 2, completed: 1, cancelled: 1, noShow: 0, collections: "120.00", newPatients: 2, outstanding: "40.00", refunds: "10.00", paymentMethods: { cash: 120 }, doctorPerformance: [{ doctorId: 7, doctorName: "DR-7", bookings: 4, completed: 1, noShow: 0 }] });
+    const result = await caller.reports.summary({ branchId: 2, from: "2026-08-01", to: "2026-08-31" });
+    expect(mocks.getReportsSummary).toHaveBeenCalledWith({ branchId: 2, from: new Date("2026-08-01"), to: new Date("2026-08-31") });
+    expect(result.arrived).toBe(2);
+    expect(result.outstanding).toBe("40.00");
+    expect(result.doctorPerformance[0]?.doctorName).toBe("DR-7");
   });
 
   it("returns searchable patient records", async () => {

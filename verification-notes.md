@@ -13,3 +13,10 @@ The first bootstrap attempt with an invalid email was rejected by server validat
 - `/services` loaded successfully for the authenticated Arabic session. The sidebar contains the new Services & pricing entry, and the page shows bilingual service creation and branch-price forms with no 404.
 - `/appointments/new` loaded successfully. The form exposes patient, branch, doctor, date, availability slot, visit type, notes, confirm, and cancel controls. The confirm button remains disabled until a valid available slot is selected, and no available-slot data is shown before doctor/branch selection.
 - Existing browser session is authenticated as the test super admin.
+
+## Visual review after branch, user-assignment, and specialty updates
+
+- `/branches` rendered successfully in Arabic RTL with the registered-branches empty state and working-hours form visible.
+- `/users` rendered successfully with the internal account table and edit action visible.
+- `/doctors` rendered successfully with specialty management, visible edit icons, activation controls, doctor form, and schedule form.
+- TypeScript and Vitest passed after these updates; interactive save/error flows remain pending because the preview currently contains no branch records and only the bootstrap account.

@@ -6,15 +6,15 @@
 - [x] Replace the starter home screen with the clinic management dashboard shell.
 - [x] Implement internal email-and-password authentication.
 - [x] Implement the five roles: Super Admin, Branch Manager, Doctor, Receptionist, and Accountant.
-- [ ] Implement role-specific route protection and server-side authorization.
+- [x] Implement role-specific route protection and server-side authorization.
 - [x] Implement role-specific dashboards with today's statistics and relevant alerts.
 
 ## Branch and organization management
 
 - [x] Create the branch data model for three branches.
-- [ ] Build branch create, edit, view, activate, and working-hours workflows.
-- [ ] Define services offered by each branch.
-- [ ] Assign users to one or more branches.
+- [x] Build branch create, edit, view, activate, and working-hours workflows.
+- [x] Define services offered by each branch.
+- [x] Assign users to one or more branches.
 
 ## Doctors and specialties
 
@@ -55,10 +55,10 @@
 
 ## Reports and auditability
 
-- [ ] Build operational reports for bookings, attendance, cancellations, and no-shows.
-- [ ] Build financial reports for collections, outstanding balances, payment methods, and refunds.
-- [ ] Build doctor performance and new-patient reports.
-- [ ] Add branch and date-period filters to reports.
+- [x] Build operational reports for bookings, attendance, cancellations, and no-shows.
+- [x] Build financial reports for collections, outstanding balances, payment methods, and refunds.
+- [x] Build doctor performance and new-patient reports.
+- [x] Add branch and date-period filters to reports.
 - [x] Create an audit log for sensitive changes and user actions.
 
 ## Offline and synchronization readiness
@@ -81,7 +81,7 @@
 - [x] Fully localize the shared application shell, login prompts, navigation, and language state globally.
 - [x] Implement or safely stub all primary sidebar routes so users do not hit 404 dead ends.
 - [x] Build visit attachment upload and download flows with storage integration, validation, and UI states.
-- [ ] Add an explicit receipt data model and connect receipts to invoices and payments.
+- [x] Add an explicit receipt data model and connect receipts to invoices and payments.
 - [x] Implement audit-log writing in sensitive mutations and add tests proving audit entries are recorded.
 
 ## Test and data-integrity follow-ups
@@ -178,7 +178,7 @@
 
 ## Doctor-management corrections
 
-- [ ] Implement full specialty management with create, edit, activate, and deactivate actions.
+- [x] Implement full specialty management with create, edit, activate, and deactivate actions.
 - [ ] Implement doctor profile edit/view management beyond the initial create/list form.
 - [x] Ensure the required specialties are seeded or created: Obstetrics & Gynecology and Male Reproductive Medicine.
 - [x] Add tests proving the required specialties are available through the API.
@@ -207,3 +207,20 @@
 - [x] Add a persisted receipt model linked to invoice and payment records.
 - [x] Add service and branch-service management workflows for creating, editing, activating, and pricing services.
 - [x] Add tests proving branch-priced invoice totals/items and invalid branch-service rejection.
+
+## Branch and assignment verification corrections
+
+- [x] Add explicit pending/success/error feedback for branch edit, activation, and working-hours mutations.
+- [x] Await user branch-assignment persistence before closing the edit form and show assignment errors.
+- [ ] Add tests or browser verification for branch edit and user-to-branch assignment flows.
+
+## Final branch and user-assignment quality corrections
+
+- [x] Add explicit success feedback and clearer pending labels for branch edit, activation/deactivation, and working-hours saves.
+- [x] Coordinate user profile and branch-assignment updates through one server operation to avoid partial success.
+- [ ] Perform interactive verification of branch and user-assignment save/error flows.
+
+## Specialty edit verification corrections
+
+- [x] Add a visible specialty edit workflow with pending, success, and error feedback.
+- [x] Add test or browser verification for specialty rename and activate/deactivate behavior.

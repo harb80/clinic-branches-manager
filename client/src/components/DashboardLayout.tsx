@@ -30,18 +30,18 @@ import { trpc } from "@/lib/trpc";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 
-const menuItems = [
+const menuItems: Array<{ icon: typeof LayoutDashboard; ar: string; en: string; path: string; roles?: string[] }> = [
   { icon: LayoutDashboard, ar: "لوحة التحكم", en: "Dashboard", path: "/" },
-  { icon: CalendarDays, ar: "المواعيد والحجوزات", en: "Appointments", path: "/appointments" },
-  { icon: Users, ar: "المرضى", en: "Patients", path: "/patients" },
-  { icon: FileHeart, ar: "الملفات الطبية", en: "Medical records", path: "/medical-records" },
-  { icon: Stethoscope, ar: "الأطباء والتخصصات", en: "Doctors & specialties", path: "/doctors" },
-  { icon: Building2, ar: "الفروع", en: "Branches", path: "/branches" },
-  { icon: Users, ar: "المستخدمون والصلاحيات", en: "Users & roles", path: "/users" },
-  { icon: CreditCard, ar: "المدفوعات والفواتير", en: "Payments & invoices", path: "/payments" },
-  { icon: Tags, ar: "الخدمات والأسعار", en: "Services & pricing", path: "/services" },
-  { icon: BarChart3, ar: "التقارير", en: "Reports", path: "/reports" },
-  { icon: Settings2, ar: "الإعدادات", en: "Settings", path: "/settings" },
+  { icon: CalendarDays, ar: "المواعيد والحجوزات", en: "Appointments", path: "/appointments", roles: ["admin", "super_admin", "branch_manager", "doctor", "receptionist"] },
+  { icon: Users, ar: "المرضى", en: "Patients", path: "/patients", roles: ["admin", "super_admin", "branch_manager", "doctor", "receptionist", "accountant"] },
+  { icon: FileHeart, ar: "الملفات الطبية", en: "Medical records", path: "/medical-records", roles: ["admin", "super_admin", "branch_manager", "doctor", "receptionist"] },
+  { icon: Stethoscope, ar: "الأطباء والتخصصات", en: "Doctors & specialties", path: "/doctors", roles: ["admin", "super_admin", "branch_manager", "doctor", "receptionist"] },
+  { icon: Building2, ar: "الفروع", en: "Branches", path: "/branches", roles: ["admin", "super_admin", "branch_manager"] },
+  { icon: Users, ar: "المستخدمون والصلاحيات", en: "Users & roles", path: "/users", roles: ["admin", "super_admin"] },
+  { icon: CreditCard, ar: "المدفوعات والفواتير", en: "Payments & invoices", path: "/payments", roles: ["admin", "super_admin", "branch_manager", "receptionist", "accountant"] },
+  { icon: Tags, ar: "الخدمات والأسعار", en: "Services & pricing", path: "/services", roles: ["admin", "super_admin", "branch_manager", "receptionist", "accountant"] },
+  { icon: BarChart3, ar: "التقارير", en: "Reports", path: "/reports", roles: ["admin", "super_admin", "branch_manager", "accountant", "receptionist", "doctor"] },
+  { icon: Settings2, ar: "الإعدادات", en: "Settings", path: "/settings", roles: ["admin", "super_admin"] },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -141,7 +141,8 @@ function DashboardLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location);
+  const allowedMenuItems = menuItems.filter(item => !item.roles || item.roles.includes(user?.role ?? ""));
+  const activeMenuItem = allowedMenuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
 
@@ -152,6 +153,11 @@ function DashboardLayoutContent({
     window.addEventListener("offline", handleOffline);
     return () => { window.removeEventListener("online", handleOnline); window.removeEventListener("offline", handleOffline); };
   }, []);
+
+  useEffect(() => {
+    const restrictedPath = menuItems.find(item => item.path === location && item.roles && !item.roles.includes(user?.role ?? ""));
+    if (restrictedPath) setLocation("/");
+  }, [location, setLocation, user?.role]);
 
   useEffect(() => {
     if (isCollapsed) {
@@ -218,7 +224,7 @@ function DashboardLayoutContent({
 
           <SidebarContent className="gap-0">
             <SidebarMenu className="px-2 py-1">
-              {menuItems.map(item => {
+              {allowedMenuItems.map(item => {
                 const isActive = location === item.path;
                 return (
                   <SidebarMenuItem key={item.path}>

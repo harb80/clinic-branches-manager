@@ -131,12 +131,41 @@ export async function listInternalUsers() {
   return db.select({ id: users.id, name: users.name, email: users.email, username: users.username, role: users.role, isActive: users.isActive }).from(users).where(sql`${users.passwordHash} IS NOT NULL`).orderBy(asc(users.name));
 }
 
+export async function listUserBranchIds(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ branchId: userBranches.branchId }).from(userBranches).where(eq(userBranches.userId, userId));
+  return rows.map(row => row.branchId);
+}
+
+export async function replaceUserBranches(userId: number, branchIds: number[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.delete(userBranches).where(eq(userBranches.userId, userId));
+  if (branchIds.length > 0) await db.insert(userBranches).values(Array.from(new Set(branchIds)).map(branchId => ({ userId, branchId })));
+  return listUserBranchIds(userId);
+}
+
 export async function updateInternalUser(id: number, input: { name?: string; email?: string; username?: string; role?: "super_admin" | "branch_manager" | "doctor" | "receptionist" | "accountant"; isActive?: boolean; passwordHash?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   await db.update(users).set(input).where(eq(users.id, id));
   const result = await db.select({ id: users.id, name: users.name, email: users.email, username: users.username, role: users.role, isActive: users.isActive }).from(users).where(eq(users.id, id)).limit(1);
   return result[0];
+}
+
+export async function updateInternalUserWithBranches(id: number, input: { name?: string; email?: string; username?: string; role?: "super_admin" | "branch_manager" | "doctor" | "receptionist" | "accountant"; isActive?: boolean; branchIds: number[] }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const { branchIds, ...userChanges } = input;
+  return db.transaction(async tx => {
+    await tx.update(users).set(userChanges).where(eq(users.id, id));
+    await tx.delete(userBranches).where(eq(userBranches.userId, id));
+    const uniqueBranchIds = Array.from(new Set(branchIds));
+    if (uniqueBranchIds.length > 0) await tx.insert(userBranches).values(uniqueBranchIds.map(branchId => ({ userId: id, branchId })));
+    const result = await tx.select({ id: users.id, name: users.name, email: users.email, username: users.username, role: users.role, isActive: users.isActive }).from(users).where(eq(users.id, id)).limit(1);
+    return result[0];
+  });
 }
 
 export async function createInternalUser(input: { name: string; email: string; username: string; passwordHash: string; role: "super_admin" | "branch_manager" | "doctor" | "receptionist" | "accountant" }) {
@@ -311,22 +340,34 @@ export async function listSpecialties() {
 
 export async function getReportsSummary(filters: { branchId?: number; from?: Date; to?: Date }) {
   const db = await getDb();
-  if (!db) return { bookings: 0, completed: 0, cancelled: 0, noShow: 0, collections: "0.00", newPatients: 0 };
+  if (!db) return { bookings: 0, arrived: 0, completed: 0, cancelled: 0, noShow: 0, collections: "0.00", newPatients: 0, outstanding: "0.00", refunds: "0.00", paymentMethods: {}, doctorPerformance: [] };
   const appointmentConditions = [];
   if (filters.branchId) appointmentConditions.push(eq(appointments.branchId, filters.branchId));
   if (filters.from) appointmentConditions.push(sql`${appointments.startsAt} >= ${filters.from}`);
   if (filters.to) appointmentConditions.push(sql`${appointments.startsAt} <= ${filters.to}`);
-  const appointmentRows = await db.select({ status: appointments.status }).from(appointments).where(appointmentConditions.length ? and(...appointmentConditions) : undefined);
+  const appointmentRows = await db.select({ status: appointments.status, doctorId: appointments.doctorId, doctorNameAr: doctors.licenseNumber, doctorNameEn: doctors.licenseNumber }).from(appointments).leftJoin(doctors, eq(appointments.doctorId, doctors.id)).where(appointmentConditions.length ? and(...appointmentConditions) : undefined);
   const paymentConditions = [];
   if (filters.branchId) paymentConditions.push(eq(payments.branchId, filters.branchId));
   if (filters.from) paymentConditions.push(sql`${payments.paidAt} >= ${filters.from}`);
   if (filters.to) paymentConditions.push(sql`${payments.paidAt} <= ${filters.to}`);
-  const paymentRows = await db.select({ amount: payments.amount }).from(payments).where(paymentConditions.length ? and(...paymentConditions) : undefined);
+  const paymentRows = await db.select({ amount: payments.amount, method: payments.method }).from(payments).where(paymentConditions.length ? and(...paymentConditions) : undefined);
   const patientConditions = [];
   if (filters.from) patientConditions.push(sql`${patients.createdAt} >= ${filters.from}`);
   if (filters.to) patientConditions.push(sql`${patients.createdAt} <= ${filters.to}`);
   const patientRows = await db.select({ id: patients.id }).from(patients).where(patientConditions.length ? and(...patientConditions) : undefined);
-  return { bookings: appointmentRows.length, completed: appointmentRows.filter(row => row.status === "completed").length, cancelled: appointmentRows.filter(row => row.status === "cancelled").length, noShow: appointmentRows.filter(row => row.status === "no_show").length, collections: paymentRows.reduce((sum, row) => sum + Number(row.amount), 0).toFixed(2), newPatients: patientRows.length };
+  const invoiceConditions: any[] = [sql`${invoices.status} IN ('unpaid', 'partial')`];
+  if (filters.branchId) invoiceConditions.push(eq(invoices.branchId, filters.branchId));
+  if (filters.from) invoiceConditions.push(sql`${invoices.createdAt} >= ${filters.from}`);
+  if (filters.to) invoiceConditions.push(sql`${invoices.createdAt} <= ${filters.to}`);
+  const outstandingRows = await db.select({ total: invoices.total }).from(invoices).where(and(...invoiceConditions));
+  const refundConditions: any[] = [sql`${invoices.status} = 'refunded'`];
+  if (filters.branchId) refundConditions.push(eq(invoices.branchId, filters.branchId));
+  if (filters.from) refundConditions.push(sql`${invoices.createdAt} >= ${filters.from}`);
+  if (filters.to) refundConditions.push(sql`${invoices.createdAt} <= ${filters.to}`);
+  const refundRows = await db.select({ total: invoices.total }).from(invoices).where(and(...refundConditions));
+  const paymentMethods = paymentRows.reduce<Record<string, number>>((result, row) => { result[row.method] = (result[row.method] ?? 0) + Number(row.amount); return result; }, {});
+  const doctorPerformance = appointmentRows.reduce<Record<number, { doctorId: number; doctorName: string; bookings: number; completed: number; noShow: number }>>((result, row) => { const doctorId = row.doctorId ?? 0; const doctorName = row.doctorNameAr ?? `Doctor #${doctorId}`; const current = result[doctorId] ?? { doctorId, doctorName, bookings: 0, completed: 0, noShow: 0 }; current.bookings += 1; if (row.status === "completed") current.completed += 1; if (row.status === "no_show") current.noShow += 1; result[doctorId] = current; return result; }, {});
+  return { bookings: appointmentRows.length, arrived: appointmentRows.filter(row => row.status === "arrived").length, completed: appointmentRows.filter(row => row.status === "completed").length, cancelled: appointmentRows.filter(row => row.status === "cancelled").length, noShow: appointmentRows.filter(row => row.status === "no_show").length, collections: paymentRows.reduce((sum, row) => sum + Number(row.amount), 0).toFixed(2), newPatients: patientRows.length, outstanding: outstandingRows.reduce((sum, row) => sum + Number(row.total), 0).toFixed(2), refunds: refundRows.reduce((sum, row) => sum + Number(row.total), 0).toFixed(2), paymentMethods, doctorPerformance: Object.values(doctorPerformance) };
 }
 
 export async function listInvoices(patientId?: number) {

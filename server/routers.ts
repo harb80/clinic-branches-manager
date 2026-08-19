@@ -40,6 +40,9 @@ import {
   recordPayment,
   getUserByLogin,
   hasInternalUserConflict,
+  listUserBranchIds,
+  replaceUserBranches,
+  updateInternalUserWithBranches,
   listBranches,
   listBranchWorkingHours,
   saveBranchWorkingHours,
@@ -93,6 +96,8 @@ export const appRouter = router({
     }),
   }),
   users: router({
+    branches: adminProcedure.input(z.object({ userId: z.number().int().positive() })).query(({ input }) => listUserBranchIds(input.userId)),
+    setBranches: adminProcedure.input(z.object({ userId: z.number().int().positive(), branchIds: z.array(z.number().int().positive()).max(20) })).mutation(async ({ ctx, input }) => { const branchIds = await replaceUserBranches(input.userId, input.branchIds); await writeAuditLog({ userId: ctx.user.id, action: "update", entityType: "user_branches", entityId: input.userId, metadata: { branchIds } }); return branchIds; }),
     list: adminProcedure.query(() => listInternalUsers()),
     create: adminProcedure.input(z.object({ name: z.string().trim().min(2).max(160), email: z.string().email(), username: z.string().trim().min(3).max(120), password: z.string().min(8).max(120), role: z.enum(["branch_manager", "doctor", "receptionist", "accountant"]) })).mutation(async ({ ctx, input }) => {
       if (await hasInternalUserConflict({ email: input.email, username: input.username })) throw new Error("Username or email already exists");
@@ -101,11 +106,11 @@ export const appRouter = router({
       await writeAuditLog({ userId: ctx.user.id, action: "create", entityType: "user", entityId: account?.id, metadata: { role: input.role } });
       return account ? { id: account.id, name: account.name, email: account.email, username: account.username, role: account.role } : null;
     }),
-    update: adminProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).max(160).optional(), email: z.string().email().optional(), username: z.string().trim().min(3).max(120).optional(), role: z.enum(["super_admin", "branch_manager", "doctor", "receptionist", "accountant"]).optional(), isActive: z.boolean().optional() })).mutation(async ({ ctx, input }) => {
-      const { id, ...changes } = input;
+    update: adminProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).max(160).optional(), email: z.string().email().optional(), username: z.string().trim().min(3).max(120).optional(), role: z.enum(["super_admin", "branch_manager", "doctor", "receptionist", "accountant"]).optional(), isActive: z.boolean().optional(), branchIds: z.array(z.number().int().positive()).max(20).optional() })).mutation(async ({ ctx, input }) => {
+      const { id, branchIds, ...changes } = input;
       if (await hasInternalUserConflict({ email: changes.email, username: changes.username }, id)) throw new Error("Username or email already exists");
-      const account = await updateInternalUser(id, changes);
-      await writeAuditLog({ userId: ctx.user.id, action: "update", entityType: "user", entityId: id, metadata: changes });
+      const account = branchIds ? await updateInternalUserWithBranches(id, { ...changes, branchIds }) : await updateInternalUser(id, changes);
+      await writeAuditLog({ userId: ctx.user.id, action: "update", entityType: "user", entityId: id, metadata: { ...changes, ...(branchIds ? { branchIds } : {}) } });
       return account;
     }),
     resetPassword: adminProcedure.input(z.object({ id: z.number().int().positive(), password: z.string().min(8).max(120) })).mutation(async ({ ctx, input }) => {
