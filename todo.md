@@ -237,3 +237,13 @@
 - [x] Convert the weekly view into a true time-grid calendar with hour positioning.
 - [x] Return and display readable patient, doctor, and branch names in appointment history.
 - [x] Verify appointment list filter inputs are passed through the protected procedure and applied by the data-query implementation.
+
+## GitHub export
+
+- [ ] Export the final project checkpoint to a user-selected GitHub repository.
+- [ ] Verify the exported repository and report its URL.
+
+## GitHub export details
+
+- [ ] Create the private GitHub repository `clinic-branches-manager` under the connected account.
+- [ ] Push the final checkpoint and verify the remote repository contents.
